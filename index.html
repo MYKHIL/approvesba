@@ -76,6 +76,8 @@
             // Master Hash: c93a215026f36ac783bcac8ba5e4bbea1c3cdb6c79d3824f9712143c44dbb0f3
             if (hash === 'c93a215026f36ac783bcac8ba5e4bbea1c3cdb6c79d3824f9712143c44dbb0f3') {
                 document.getElementById('loginGate').classList.add('hidden');
+                document.getElementById('mainContent').classList.remove('hidden');
+                document.getElementById('searchContainer').classList.remove('hidden');
                 sessionStorage.setItem('portal_access', 'true');
                 await fetchAllSchools();
             } else {
@@ -389,6 +391,8 @@
         window.addEventListener('DOMContentLoaded', () => {
             if (sessionStorage.getItem('portal_access') === 'true') {
                 document.getElementById('loginGate').classList.add('hidden');
+                document.getElementById('mainContent').classList.remove('hidden');
+                document.getElementById('searchContainer').classList.remove('hidden');
                 fetchAllSchools();
             }
 
@@ -437,7 +441,7 @@
         </div>
     </div>
 
-    <div class="container mx-auto px-4 py-8 max-w-7xl">
+    <div id="mainContent" class="container mx-auto px-4 py-8 max-w-7xl hidden">
         <!-- Header -->
         <header class="text-center mb-12">
             <div
@@ -471,7 +475,7 @@
                 </div>
 
                 <!-- Search -->
-                <div class="relative mb-4">
+                <div id="searchContainer" class="relative mb-4 hidden">
                     <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none"
                         viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
