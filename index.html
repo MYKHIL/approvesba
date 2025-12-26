@@ -159,6 +159,44 @@
             return hashHex;
         }
 
+        async function verifyMasterPassword() {
+            const password = document.getElementById('activationPassword').value;
+            if (!password) {
+                showMessage('❌ Activation Master Password is required!', 'error');
+                return false;
+            }
+            const hash = await hashPassword(password);
+            if (hash !== 'c93a215026f36ac783bcac8ba5e4bbea1c3cdb6c79d3824f9712143c44dbb0f3') {
+                showMessage('❌ Invalid Activation Master Password!', 'error');
+                return false;
+            }
+            return true;
+        }
+
+        window.updateExpectedExpiry = function () {
+            const monthsInput = document.getElementById('months');
+            const months = parseInt(monthsInput.value) || 0;
+            const display = document.getElementById('expectedExpiryDisplay');
+
+            if (months === 0) {
+                display.classList.add('hidden');
+                return;
+            }
+
+            const expiryDate = new Date();
+            expiryDate.setMonth(expiryDate.getMonth() + months);
+
+            display.innerHTML = `
+                <div class="flex items-center gap-2 text-green-700 font-bold bg-green-50 px-3 py-2 rounded-lg border border-green-200 text-sm">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Expected Expiry: ${expiryDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </div>
+            `;
+            display.classList.remove('hidden');
+        }
+
         window.selectSchool = async function (schoolId) {
             selectedSchool = schools.find(s => s.id === schoolId);
             renderSchools(document.getElementById('searchInput').value);
@@ -171,18 +209,34 @@
                 console.log(`[DB ${selectedSchool.dbIndex}] Fetching sub: ${subPath}`);
                 try {
                     const subDoc = await getDoc(doc(db, 'subscriptions', baseName));
+                    const currentExpiryDisplay = document.getElementById('currentExpiryDisplay');
+
                     if (subDoc.exists()) {
                         const data = subDoc.data();
                         document.getElementById('maxStudents').value = data.maxStudents || '';
                         document.getElementById('maxClass').value = data.maxClass || '';
-                        // Note: months isn't stored directly, but we default to 12
                         document.getElementById('months').value = 12;
-                        console.log('Auto-filled existing subscription for:', baseName);
+
+                        if (data.expiryDate) {
+                            const date = data.expiryDate.toDate();
+                            currentExpiryDisplay.innerHTML = `
+                                <div class="flex items-center gap-2 text-blue-700 font-bold bg-blue-50 px-3 py-2 rounded-lg border border-blue-200 text-sm">
+                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Existing Expiry: ${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                </div>
+                            `;
+                            currentExpiryDisplay.classList.remove('hidden');
+                        }
+                        updateExpectedExpiry();
                     } else {
                         // Clear fields if no subscription
                         document.getElementById('maxStudents').value = '';
                         document.getElementById('maxClass').value = '';
                         document.getElementById('months').value = 12;
+                        currentExpiryDisplay.classList.add('hidden');
+                        updateExpectedExpiry();
                     }
                 } catch (e) {
                     console.error('Error fetching subscription:', e);
@@ -217,6 +271,8 @@
             document.getElementById('maxClass').value = selectedTemplate.maxClass;
             document.getElementById('months').value = selectedTemplate.months;
 
+            updateExpectedExpiry();
+
             // Highlight selected template
             document.querySelectorAll('[data-template]').forEach(el => {
                 el.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50');
@@ -231,6 +287,10 @@
                 showMessage('Please select a school first', 'error');
                 return;
             }
+
+            // Verify password before proceeding
+            const isAuthorized = await verifyMasterPassword();
+            if (!isAuthorized) return;
 
             if (template.name === 'Custom') {
                 showMessage('Custom plans require manual configuration', 'error');
@@ -252,13 +312,7 @@
                     expiryDate.setDate(expiryDate.getDate() + template.days);
                 }
 
-                const password = document.getElementById('activationPassword').value;
-                if (!password) {
-                    showMessage('Please enter the activation master password.', 'error');
-                    return;
-                }
-
-                const activationHash = await hashPassword(password);
+                const activationHash = await hashPassword(document.getElementById('activationPassword').value);
                 const subscriptionData = {
                     maxStudents: template.maxStudents,
                     maxClass: template.maxClass,
@@ -305,6 +359,10 @@
                 return;
             }
 
+            // Verify password before proceeding
+            const isAuthorized = await verifyMasterPassword();
+            if (!isAuthorized) return;
+
             const maxStudents = parseInt(document.getElementById('maxStudents').value);
             const maxClass = parseInt(document.getElementById('maxClass').value);
             const months = parseInt(document.getElementById('months').value);
@@ -323,13 +381,7 @@
                 const expiryDate = new Date();
                 expiryDate.setMonth(expiryDate.getMonth() + months);
 
-                const password = document.getElementById('activationPassword').value;
-                if (!password) {
-                    showMessage('Please enter the activation master password.', 'error');
-                    return;
-                }
-
-                const activationHash = await hashPassword(password);
+                const activationHash = await hashPassword(document.getElementById('activationPassword').value);
                 const subscriptionData = {
                     maxStudents: parseInt(maxStudents),
                     maxClass: parseInt(maxClass),
@@ -399,6 +451,8 @@
             document.getElementById('searchInput').addEventListener('input', (e) => {
                 renderSchools(e.target.value);
             });
+
+            document.getElementById('months').addEventListener('input', updateExpectedExpiry);
 
             document.getElementById('refreshBtn').addEventListener('click', fetchAllSchools);
         });
@@ -709,6 +763,10 @@
                                     class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     placeholder="e.g., 12" />
                             </div>
+
+                            <!-- Expiry Displays -->
+                            <div id="currentExpiryDisplay" class="hidden space-y-2"></div>
+                            <div id="expectedExpiryDisplay" class="hidden space-y-2"></div>
                             <div class="bg-amber-50 p-4 rounded-xl border border-amber-100 mt-4">
                                 <label class="block text-sm font-bold text-amber-800 mb-2">Activation Master
                                     Password</label>
