@@ -10,7 +10,7 @@
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { initializeFirestore, collection, getDocs, doc, setDoc, getDoc, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-        // Firebase Configurations - REPLACE WITH YOUR ACTUAL CONFIGS
+        // Firebase Configurations
         const FIREBASE_CONFIGS = {
             1: {
                 apiKey: "AIzaSyCe0O-mBCODiEA-KNVLXLMp00lJ6_Jt5SU",
@@ -59,13 +59,22 @@
         Object.entries(FIREBASE_CONFIGS).forEach(([idx, config]) => {
             const app = initializeApp(config, `db${idx}`);
             apps[idx] = app;
-            // Force long polling to avoid 400 Bad Request issues in some environments
             dbs[idx] = initializeFirestore(app, {
                 experimentalForceLongPolling: true
             });
         });
 
-        async function loginPortal() {
+        async function hashPassword(password) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(password);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            return hashHex;
+        }
+
+        // Layer 1: Access
+        window.loginPortal = async function () {
             const password = document.getElementById('portalPassword').value;
             if (!password) {
                 alert('Please enter the portal password');
@@ -73,7 +82,6 @@
             }
 
             const hash = await hashPassword(password);
-            // Master Hash: c93a215026f36ac783bcac8ba5e4bbea1c3cdb6c79d3824f9712143c44dbb0f3
             if (hash === 'c93a215026f36ac783bcac8ba5e4bbea1c3cdb6c79d3824f9712143c44dbb0f3') {
                 document.getElementById('loginGate').classList.add('hidden');
                 document.getElementById('mainContent').classList.remove('hidden');
@@ -84,21 +92,31 @@
                 alert('Incorrect portal password');
             }
         }
-        window.loginPortal = loginPortal;
 
-        // Fetch all schools from all databases
+        // Layer 2: Verification
+        async function verifyMasterPassword() {
+            const password = document.getElementById('activationPassword').value;
+            if (!password) {
+                showMessage('❌ Activation Master Password is required!', 'error');
+                return false;
+            }
+            const hash = await hashPassword(password);
+            if (hash !== 'c93a215026f36ac783bcac8ba5e4bbea1c3cdb6c79d3824f9712143c44dbb0f3') {
+                showMessage('❌ Invalid Activation Master Password!', 'error');
+                return false;
+            }
+            return true;
+        }
+
         async function fetchAllSchools() {
             showLoading(true);
             schools = [];
-
             const schoolList = document.getElementById('schoolList');
-            schoolList.innerHTML = '<div class="text-center text-gray-500"><div class="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-2"></div>Loading schools...</div>';
+            schoolList.innerHTML = '<div class="text-center text-gray-500 py-4">Loading schools...</div>';
 
             try {
                 const promises = Object.entries(dbs).map(async ([dbIndex, db]) => {
-                    const schoolsRef = collection(db, 'schools');
-                    const snapshot = await getDocs(schoolsRef);
-
+                    const snapshot = await getDocs(collection(db, 'schools'));
                     snapshot.forEach(doc => {
                         const data = doc.data();
                         if (data.Access !== false) {
@@ -111,14 +129,12 @@
                         }
                     });
                 });
-
                 await Promise.all(promises);
                 schools.sort((a, b) => a.name.localeCompare(b.name));
                 renderSchools();
             } catch (error) {
-                console.error('Error fetching schools:', error);
-                showMessage('Failed to fetch schools: ' + error.message, 'error');
-                schoolList.innerHTML = '<div class="text-center text-red-600">Failed to load schools</div>';
+                console.error('Fetch error:', error);
+                showMessage('Failed to fetch schools', 'error');
             } finally {
                 showLoading(false);
             }
@@ -137,309 +153,171 @@
             }
 
             schoolList.innerHTML = filtered.map(school => `
-                <div class="school-item p-4 border rounded-lg hover:bg-blue-50 cursor-pointer transition-colors ${selectedSchool?.id === school.id ? 'bg-blue-100 border-blue-500 ring-2 ring-blue-300' : 'border-gray-200'}"
+                <div class="p-4 border rounded-lg hover:bg-blue-50 cursor-pointer transition-colors ${selectedSchool?.id === school.id ? 'bg-blue-100 border-blue-500 ring-2' : ''}"
                      onclick="selectSchool('${school.id}')">
                     <div class="flex justify-between items-start">
-                        <div class="flex-1">
+                        <div>
                             <h3 class="font-semibold text-gray-900">${school.name}</h3>
-                            <p class="text-sm text-gray-600 mt-1">ID: ${school.id}</p>
+                            <p class="text-xs text-gray-500">ID: ${school.id}</p>
                         </div>
-                        <span class="text-xs px-2 py-1 bg-gray-100 rounded-full">DB ${school.dbIndex}</span>
+                        <span class="text-[10px] px-2 py-1 bg-gray-100 rounded text-gray-400">DB ${school.dbIndex}</span>
                     </div>
                 </div>
             `).join('');
         }
 
-        async function hashPassword(password) {
-            const encoder = new TextEncoder();
-            const data = encoder.encode(password);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = Array.from(new Uint8Array(hashBuffer));
-            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-            return hashHex;
-        }
-
-        async function verifyMasterPassword() {
-            const password = document.getElementById('activationPassword').value;
-            if (!password) {
-                showMessage('❌ Activation Master Password is required!', 'error');
-                return false;
-            }
-            const hash = await hashPassword(password);
-            if (hash !== 'c93a215026f36ac783bcac8ba5e4bbea1c3cdb6c79d3824f9712143c44dbb0f3') {
-                showMessage('❌ Invalid Activation Master Password!', 'error');
-                return false;
-            }
-            return true;
-        }
-
-        window.updateExpectedExpiry = function () {
-            const monthsInput = document.getElementById('months');
-            const months = parseInt(monthsInput.value) || 0;
-            const display = document.getElementById('expectedExpiryDisplay');
-
-            if (months === 0) {
-                display.classList.add('hidden');
-                return;
-            }
-
-            const expiryDate = new Date();
-            expiryDate.setMonth(expiryDate.getMonth() + months);
-
-            display.innerHTML = `
-                <div class="flex items-center gap-2 text-green-700 font-bold bg-green-50 px-3 py-2 rounded-lg border border-green-200 text-sm">
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    Expected Expiry: ${expiryDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-                </div>
-            `;
-            display.classList.remove('hidden');
-        }
-
         window.selectSchool = async function (schoolId) {
             selectedSchool = schools.find(s => s.id === schoolId);
             renderSchools(document.getElementById('searchInput').value);
-
-            // Auto-fill existing subscription if it exists
-            if (selectedSchool) {
-                const baseName = selectedSchool.id.split('_')[0];
-                const db = dbs[selectedSchool.dbIndex];
-                const subPath = `subscriptions/${baseName}`;
-                console.log(`[DB ${selectedSchool.dbIndex}] Fetching sub: ${subPath}`);
-                try {
-                    const subDoc = await getDoc(doc(db, 'subscriptions', baseName));
-                    const currentExpiryDisplay = document.getElementById('currentExpiryDisplay');
-
-                    if (subDoc.exists()) {
-                        const data = subDoc.data();
-                        document.getElementById('maxStudents').value = data.maxStudents || '';
-                        document.getElementById('maxClass').value = data.maxClass || '';
-                        document.getElementById('months').value = 12;
-
-                        if (data.expiryDate) {
-                            const date = data.expiryDate.toDate();
-                            currentExpiryDisplay.innerHTML = `
-                                <div class="flex items-center gap-2 text-blue-700 font-bold bg-blue-50 px-3 py-2 rounded-lg border border-blue-200 text-sm">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    Existing Expiry: ${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-                                </div>
-                            `;
-                            currentExpiryDisplay.classList.remove('hidden');
-                        }
-                        updateExpectedExpiry();
-                    } else {
-                        // Clear fields if no subscription
-                        document.getElementById('maxStudents').value = '';
-                        document.getElementById('maxClass').value = '';
-                        document.getElementById('months').value = 12;
-                        currentExpiryDisplay.classList.add('hidden');
-                        updateExpectedExpiry();
-                    }
-                } catch (e) {
-                    console.error('Error fetching subscription:', e);
-                }
-            }
-
+            if (selectedSchool) await loadSubscription(selectedSchool);
             updateUI();
         }
 
-        function updateUI() {
-            const selectedSchoolEl = document.getElementById('selectedSchool');
-            const licenseForm = document.getElementById('licenseForm');
-
-            if (selectedSchool) {
-                selectedSchoolEl.innerHTML = `
-                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
-                        <p class="text-sm text-gray-600 mb-1">Selected School:</p>
-                        <p class="font-bold text-lg text-gray-900">${selectedSchool.name}</p>
-                        <p class="text-sm text-gray-600">Database: ${selectedSchool.dbIndex} | ID: ${selectedSchool.id}</p>
-                    </div>
-                `;
-                licenseForm.classList.remove('hidden');
-            } else {
-                selectedSchoolEl.innerHTML = '<p class="text-gray-500 text-center py-4">No school selected</p>';
-                licenseForm.classList.add('hidden');
+        async function loadSubscription(school) {
+            const baseName = school.id.split('_')[0];
+            const db = dbs[school.dbIndex];
+            const curExp = document.getElementById('currentExpiryDisplay');
+            try {
+                const subDoc = await getDoc(doc(db, 'subscriptions', baseName));
+                if (subDoc.exists()) {
+                    const data = subDoc.data();
+                    document.getElementById('maxStudents').value = data.maxStudents || '';
+                    document.getElementById('maxClass').value = data.maxClass || '';
+                    document.getElementById('months').value = 12;
+                    if (data.expiryDate) {
+                        const date = data.expiryDate.toDate();
+                        curExp.innerHTML = `
+                            <div class="p-2 bg-blue-50 border border-blue-200 rounded-lg text-xs font-bold text-blue-700 flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 8v4l3 3" stroke-width="2" stroke-linecap="round"/></svg>
+                                Existing Expiry: ${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            </div>`;
+                        curExp.classList.remove('hidden');
+                    }
+                } else {
+                    document.getElementById('months').value = 12;
+                    curExp.classList.add('hidden');
+                }
+            } catch (e) {
+                curExp.classList.add('hidden');
             }
-        }
-
-        window.applyTemplate = function (index) {
-            selectedTemplate = LICENSE_TEMPLATES[index];
-            document.getElementById('maxStudents').value = selectedTemplate.maxStudents;
-            document.getElementById('maxClass').value = selectedTemplate.maxClass;
-            document.getElementById('months').value = selectedTemplate.months;
-
             updateExpectedExpiry();
-
-            // Highlight selected template
-            document.querySelectorAll('[data-template]').forEach(el => {
-                el.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50');
-            });
-            document.querySelector(`[data-template="${index}"]`).classList.add('ring-2', 'ring-blue-500', 'bg-blue-50');
         }
 
-        window.quickActivate = async function (templateIndex) {
-            const template = LICENSE_TEMPLATES[templateIndex];
-
-            if (!selectedSchool) {
-                showMessage('Please select a school first', 'error');
-                return;
+        function updateUI() {
+            const el = document.getElementById('selectedSchool');
+            const form = document.getElementById('licenseForm');
+            if (selectedSchool) {
+                el.innerHTML = `
+                    <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                        <p class="text-xs text-blue-600 font-bold uppercase mb-1">Target School</p>
+                        <p class="font-bold text-lg text-gray-900">${selectedSchool.name}</p>
+                        <p class="text-xs text-gray-500">DB: ${selectedSchool.dbIndex} | ID: ${selectedSchool.id}</p>
+                    </div>`;
+                form.classList.remove('hidden');
+            } else {
+                el.innerHTML = '<p class="text-gray-400 text-center py-4 italic">Select a school from the left to begin</p>';
+                form.classList.add('hidden');
             }
+        }
 
-            // Verify password before proceeding
-            const isAuthorized = await verifyMasterPassword();
-            if (!isAuthorized) return;
+        window.updateExpectedExpiry = function () {
+            const m = parseInt(document.getElementById('months').value) || 0;
+            const exp = document.getElementById('expectedExpiryDisplay');
+            if (m === 0) { exp.classList.add('hidden'); return; }
+            const date = new Date();
+            date.setMonth(date.getMonth() + m);
+            exp.innerHTML = `
+                <div class="p-2 bg-green-50 border border-green-200 rounded-lg text-xs font-bold text-green-700 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14" stroke-width="2" stroke-linecap="round"/></svg>
+                    Expected Expiry: ${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </div>`;
+            exp.classList.remove('hidden');
+        }
 
-            if (template.name === 'Custom') {
-                showMessage('Custom plans require manual configuration', 'error');
-                return;
-            }
+        window.applyTemplate = function (idx) {
+            const t = LICENSE_TEMPLATES[idx];
+            document.getElementById('maxStudents').value = t.maxStudents;
+            document.getElementById('maxClass').value = t.maxClass;
+            document.getElementById('months').value = t.months;
+            updateExpectedExpiry();
+            document.querySelectorAll('[data-template]').forEach(el => el.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50'));
+            document.querySelector(`[data-template="${idx}"]`).classList.add('ring-2', 'ring-blue-500', 'bg-blue-50');
+        }
 
-            const duration = template.months ? `${template.months} months` : `${template.days} days`;
-            const confirmMsg = `Quick Activate ${template.name} for "${selectedSchool.name}"?\n\nMax Students: ${template.maxStudents}\nMax Classes: ${template.maxClass}\nDuration: ${duration}`;
-            if (!confirm(confirmMsg)) return;
+        window.quickActivate = async function (idx) {
+            const t = LICENSE_TEMPLATES[idx];
+            if (!selectedSchool || !(await verifyMasterPassword())) return;
+            const msg = `Quick Activate ${t.name} for ${selectedSchool.name}?\n\nStudents: ${t.maxStudents}\nClasses: ${t.maxClass}\nDuration: ${t.months}mo`;
+            if (!confirm(msg)) return;
 
             showLoading(true);
-
             try {
-                const expiryDate = new Date();
-                if (template.months) {
-                    expiryDate.setMonth(expiryDate.getMonth() + template.months);
-                }
-                if (template.days) {
-                    expiryDate.setDate(expiryDate.getDate() + template.days);
-                }
+                const date = new Date();
+                if (t.months) date.setMonth(date.getMonth() + t.months);
+                else date.setDate(date.getDate() + (t.days || 7));
 
-                const activationHash = await hashPassword(document.getElementById('activationPassword').value);
-                const subscriptionData = {
-                    maxStudents: template.maxStudents,
-                    maxClass: template.maxClass,
-                    expiryDate: Timestamp.fromDate(expiryDate),
-                    activationHash: activationHash,
+                const sub = {
+                    maxStudents: t.maxStudents,
+                    maxClass: t.maxClass,
+                    expiryDate: Timestamp.fromDate(date),
+                    activationHash: await hashPassword(document.getElementById('activationPassword').value),
                     lastActivated: Timestamp.now()
                 };
-
-                // Extract base school name (everything before the first underscore)
-                // e.g., "ayirebida_2025_Term1" -> "ayirebida"
-                const baseSchoolName = selectedSchool.id.split('_')[0];
-                const db = dbs[selectedSchool.dbIndex];
-                const subRef = doc(db, 'subscriptions', baseSchoolName);
-
-                console.log(`[DB ${selectedSchool.dbIndex}] Quick Writing sub: subscriptions/${baseSchoolName}`, subscriptionData);
-                try {
-                    await setDoc(subRef, subscriptionData);
-                    alert(`SUCCESS: ${template.name} activated for ${baseSchoolName} in DB ${selectedSchool.dbIndex}`);
-                    showMessage(`${template.name} License activated successfully for ${baseSchoolName}!`, 'success');
-                } catch (e) {
-                    console.error('Firestore Write Error:', e);
-                    alert(`FAILED: DB ${selectedSchool.dbIndex} rejected the write.\nError: ${e.message}\n\nCheck if firestore.rules are deployed to this project.`);
-                    showMessage(`❌ Write failed: ${e.message}`, 'error');
-                }
-
-                // Clear password after success
-                document.getElementById('activationPassword').value = '';
-
-                // Reset selection
-                selectedSchool = null;
-                updateUI();
-
-            } catch (error) {
-                console.error('Error activating license:', error);
-                showMessage('❌ Failed to activate license: ' + error.message, 'error');
+                await setDoc(doc(dbs[selectedSchool.dbIndex], 'subscriptions', selectedSchool.id.split('_')[0]), sub);
+                alert(`✅ ${t.name} activated!`);
+                resetPortal();
+            } catch (e) {
+                showMessage('❌ Activation failed', 'error');
             } finally {
                 showLoading(false);
             }
         }
 
         window.activateLicense = async function () {
-            if (!selectedSchool) {
-                showMessage('Please select a school first', 'error');
-                return;
-            }
-
-            // Verify password before proceeding
-            const isAuthorized = await verifyMasterPassword();
-            if (!isAuthorized) return;
-
-            const maxStudents = parseInt(document.getElementById('maxStudents').value);
-            const maxClass = parseInt(document.getElementById('maxClass').value);
-            const months = parseInt(document.getElementById('months').value);
-
-            if (!maxStudents || !maxClass || !months) {
-                showMessage('Please fill all license parameters', 'error');
-                return;
-            }
-
-            const confirmMsg = `Activate license for "${selectedSchool.name}"?\n\nMax Students: ${maxStudents}\nMax Classes: ${maxClass}\nDuration: ${months} months`;
-            if (!confirm(confirmMsg)) return;
+            if (!selectedSchool || !(await verifyMasterPassword())) return;
+            const s = parseInt(document.getElementById('maxStudents').value);
+            const c = parseInt(document.getElementById('maxClass').value);
+            const m = parseInt(document.getElementById('months').value);
+            if (!s || !c || !m) { showMessage('Please fill all fields', 'error'); return; }
+            if (!confirm(`Activate manual license for ${selectedSchool.name}?`)) return;
 
             showLoading(true);
-
             try {
-                const expiryDate = new Date();
-                expiryDate.setMonth(expiryDate.getMonth() + months);
-
-                const activationHash = await hashPassword(document.getElementById('activationPassword').value);
-                const subscriptionData = {
-                    maxStudents: parseInt(maxStudents),
-                    maxClass: parseInt(maxClass),
-                    expiryDate: Timestamp.fromDate(expiryDate),
-                    activationHash: activationHash,
+                const date = new Date();
+                date.setMonth(date.getMonth() + m);
+                const sub = {
+                    maxStudents: s,
+                    maxClass: c,
+                    expiryDate: Timestamp.fromDate(date),
+                    activationHash: await hashPassword(document.getElementById('activationPassword').value),
                     lastActivated: Timestamp.now()
                 };
-
-                // Target the BASE name for subscriptions
-                const baseName = selectedSchool.id.split('_')[0];
-                const db = dbs[selectedSchool.dbIndex];
-                const subRef = doc(db, 'subscriptions', baseName);
-
-                console.log(`[DB ${selectedSchool.dbIndex}] Manual Writing sub: subscriptions/${baseName}`, subscriptionData);
-                try {
-                    await setDoc(subRef, subscriptionData);
-                    alert(`SUCCESS: License activated for ${baseName} in DB ${selectedSchool.dbIndex}`);
-                    showMessage(`License activated successfully for ${baseName}!`, 'success');
-                } catch (e) {
-                    console.error('Firestore Manual Write Error:', e);
-                    alert(`FAILED: DB ${selectedSchool.dbIndex} rejected the manual write.\nError: ${e.message}\n\nCheck if firestore.rules are deployed to this project.`);
-                    showMessage(`❌ Write failed: ${e.message}`, 'error');
-                }
-
-                // Clear password after success
-                document.getElementById('activationPassword').value = '';
-
-                // Reset form
-                selectedSchool = null;
-                updateUI();
-                document.getElementById('maxStudents').value = '';
-                document.getElementById('maxClass').value = '';
-                document.getElementById('months').value = '';
-                document.querySelectorAll('[data-template]').forEach(el => {
-                    el.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50');
-                });
-
-            } catch (error) {
-                console.error('Error activating license:', error);
-                showMessage('❌ Failed to activate license: ' + error.message, 'error');
+                await setDoc(doc(dbs[selectedSchool.dbIndex], 'subscriptions', selectedSchool.id.split('_')[0]), sub);
+                alert('✅ Template activated!');
+                resetPortal();
+            } catch (e) {
+                showMessage('❌ Activation failed', 'error');
             } finally {
                 showLoading(false);
             }
         }
 
-        function showMessage(text, type) {
-            const messageEl = document.getElementById('message');
-            messageEl.textContent = text;
-            messageEl.className = `p-4 rounded-lg mb-4 ${type === 'success' ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-red-100 text-red-800 border border-red-300'}`;
-            messageEl.classList.remove('hidden');
-            setTimeout(() => messageEl.classList.add('hidden'), 5000);
+        function resetPortal() {
+            document.getElementById('activationPassword').value = '';
+            selectedSchool = null;
+            updateUI();
         }
 
-        function showLoading(show) {
-            document.getElementById('loadingOverlay').classList.toggle('hidden', !show);
+        function showMessage(t, type) {
+            const el = document.getElementById('message');
+            el.textContent = t;
+            el.className = `p-4 rounded-lg mb-4 text-sm font-bold shadow-sm border ${type === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'}`;
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 4000);
         }
 
-        // Initialize on load
+        function showLoading(s) { document.getElementById('loadingOverlay').classList.toggle('hidden', !s); }
+
         window.addEventListener('DOMContentLoaded', () => {
             if (sessionStorage.getItem('portal_access') === 'true') {
                 document.getElementById('loginGate').classList.add('hidden');
@@ -447,348 +325,157 @@
                 document.getElementById('searchContainer').classList.remove('hidden');
                 fetchAllSchools();
             }
-
-            document.getElementById('searchInput').addEventListener('input', (e) => {
-                renderSchools(e.target.value);
-            });
-
+            document.getElementById('searchInput').addEventListener('input', (e) => renderSchools(e.target.value));
             document.getElementById('months').addEventListener('input', updateExpectedExpiry);
-
             document.getElementById('refreshBtn').addEventListener('click', fetchAllSchools);
         });
     </script>
 </head>
 
-<body class="bg-gray-50 font-sans">
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 flex flex-col items-center">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-            <p class="text-gray-700 font-medium">Processing...</p>
+<body class="bg-gray-50 font-sans text-gray-900">
+    <div id="loadingOverlay"
+        class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-[100]">
+        <div class="bg-white rounded-2xl p-8 flex flex-col items-center shadow-2xl">
+            <div class="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mb-4"></div>
+            <p class="font-bold text-gray-700">Writing to Cloud...</p>
         </div>
     </div>
 
-    <!-- Login Gate -->
-    <div id="loginGate" class="fixed inset-0 bg-gray-900 bg-opacity-95 flex items-center justify-center z-[60] p-4">
-        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full text-center border border-gray-100">
-            <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
-            </div>
-            <h2 class="text-3xl font-bold text-gray-900 mb-2">Secure Portal Access</h2>
-            <p class="text-gray-600 mb-8">Please enter the portal master password to list schools and manage licenses.
-            </p>
-
-            <div class="mb-6">
-                <input id="portalPassword" type="password"
-                    class="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 outline-none transition-all text-center text-xl tracking-widest font-mono"
-                    placeholder="••••••••" onkeydown="if(event.key === 'Enter') loginPortal()" />
-            </div>
-
-            <button onclick="loginPortal()"
-                class="w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 active:scale-[0.98] transition-all shadow-lg hover:shadow-blue-500/20">
-                Unlock Portal
-            </button>
-            <p class="mt-6 text-xs text-gray-400">Restricted access for administrators only.</p>
-        </div>
-    </div>
-
-    <div id="mainContent" class="container mx-auto px-4 py-8 max-w-7xl hidden">
-        <!-- Header -->
-        <header class="text-center mb-12">
+    <!-- 🔑 Initial Authentication Gate -->
+    <div id="loginGate" class="fixed inset-0 bg-gray-900 flex items-center justify-center z-[60] p-4">
+        <div class="bg-white rounded-3xl shadow-2xl p-10 max-w-md w-full text-center border border-gray-100">
             <div
-                class="inline-flex items-center justify-center p-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl mb-4 shadow-lg">
-                <svg class="w-12 h-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                class="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
+                <svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
             </div>
-            <h1 class="text-5xl font-extrabold text-gray-900 mb-2">License Management Portal</h1>
-            <p class="text-gray-600 text-lg">Activate and manage school subscriptions across all databases</p>
+            <h2 class="text-3xl font-black mb-2">Portal Access</h2>
+            <p class="text-gray-500 mb-8 font-medium">Authentication is required to view schools.</p>
+            <input id="portalPassword" type="password"
+                class="w-full px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-blue-500 outline-none transition-all text-center text-2xl tracking-widest font-mono mb-6"
+                placeholder="••••••••" onkeydown="if(event.key === 'Enter') loginPortal()" />
+            <button onclick="loginPortal()"
+                class="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl hover:bg-blue-700 transition-all shadow-lg hover:shadow-blue-500/30">Unlock
+                Portal</button>
+        </div>
+    </div>
+
+    <div id="mainContent" class="container mx-auto px-4 py-12 max-w-7xl hidden">
+        <header class="text-center mb-16">
+            <h1 class="text-6xl font-black text-gray-900 tracking-tighter mb-4">License Portal</h1>
+            <p class="text-xl text-gray-500 font-medium">Activate and extend subscriptions across school databases.</p>
         </header>
 
-        <!-- Message Alert -->
         <div id="message" class="hidden"></div>
 
-        <!-- Main Grid -->
-        <div class="grid lg:grid-cols-2 gap-8">
-            <!-- Left Panel: School List -->
-            <div class="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-2xl font-bold text-gray-900">Schools ({schools.length})</h2>
+        <div class="grid lg:grid-cols-2 gap-12">
+            <!-- 🏫 Schools Panel -->
+            <div class="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-3xl font-black tracking-tight">Schools</h2>
                     <button id="refreshBtn"
-                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
-                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        Refresh
-                    </button>
+                        class="p-3 bg-gray-50 text-gray-600 rounded-xl hover:bg-gray-100 transition-all font-bold text-sm">Refresh
+                        List</button>
                 </div>
-
-                <!-- Search -->
-                <div id="searchContainer" class="relative mb-4 hidden">
-                    <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none"
-                        viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <input id="searchInput" type="text" placeholder="Search schools..."
-                        class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" />
+                <div id="searchContainer" class="relative mb-6 hidden">
+                    <input id="searchInput" type="text" placeholder="Search school name..."
+                        class="w-full px-6 py-4 bg-gray-50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none transition-all font-medium" />
                 </div>
-
-                <!-- School List -->
-                <div id="schoolList" class="space-y-2 max-h-[600px] overflow-y-auto">
-                    <div class="text-center text-gray-500">Loading...</div>
-                </div>
+                <div id="schoolList" class="space-y-3 max-h-[600px] overflow-y-auto pr-2"></div>
             </div>
 
-            <!-- Right Panel: License Activation -->
-            <div class="space-y-6">
-                <!-- Selected School Display -->
-                <div id="selectedSchool" class="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
-                    <p class="text-gray-500 text-center py-4">No school selected</p>
+            <!-- ⚙️ Activation Panel -->
+            <div class="space-y-8">
+                <div id="selectedSchool" class="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
+                    <p class="text-gray-400 text-center py-4 italic font-medium">Select a school to configure license
+                    </p>
                 </div>
 
-                <!-- License Form -->
-                <div id="licenseForm" class="hidden bg-white rounded-2xl shadow-md border border-gray-200 p-6">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-6">License Configuration</h2>
+                <div id="licenseForm"
+                    class="hidden bg-white rounded-3xl shadow-xl border border-gray-100 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <h2 class="text-3xl font-black tracking-tight mb-8">License Setup</h2>
 
-                    <!-- Quick Activate Cards -->
-                    <div class="mb-6">
-                        <h3
-                            class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide flex items-center gap-2">
-                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            Quick Activate
-                        </h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                            <!-- Trial -->
-                            <div
-                                class="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-400 transition-all group">
-                                <div class="flex justify-between items-start mb-2">
-                                    <div>
-                                        <h4 class="font-bold text-gray-900">Trial</h4>
-                                        <p class="text-xs text-gray-600">Free</p>
-                                    </div>
-                                    <span class="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-full">1 week</span>
-                                </div>
-                                <ul class="text-xs text-gray-600 mb-3 space-y-1">
-                                    <li>📚 10 students</li>
-                                    <li>🏫 1 classes</li>
-                                </ul>
-                                <button onclick="quickActivate(0)"
-                                    class="w-full py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-sm font-semibold rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all shadow-sm flex items-center justify-center gap-1">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                    Activate Now
-                                </button>
-                            </div>
-
-                            <!-- Basic -->
-                            <div
-                                class="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-400 transition-all group">
-                                <div class="flex justify-between items-start mb-2">
-                                    <div>
-                                        <h4 class="font-bold text-gray-900">Basic</h4>
-                                        <p class="text-xs text-gray-600">GHS 200</p>
-                                    </div>
-                                    <span class="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-full">12mo</span>
-                                </div>
-                                <ul class="text-xs text-gray-600 mb-3 space-y-1">
-                                    <li>📚 50 students</li>
-                                    <li>🏫 5 classes</li>
-                                </ul>
-                                <button onclick="quickActivate(1)"
-                                    class="w-full py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-sm font-semibold rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all shadow-sm flex items-center justify-center gap-1">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                    Activate Now
-                                </button>
-                            </div>
-
-                            <!-- Standard -->
-                            <div
-                                class="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-400 transition-all group">
-                                <div class="flex justify-between items-start mb-2">
-                                    <div>
-                                        <h4 class="font-bold text-gray-900">Standard</h4>
-                                        <p class="text-xs text-gray-600">GHS 500</p>
-                                    </div>
-                                    <span class="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-full">12mo</span>
-                                </div>
-                                <ul class="text-xs text-gray-600 mb-3 space-y-1">
-                                    <li>📚 200 students</li>
-                                    <li>🏫 10 classes</li>
-                                </ul>
-                                <button onclick="quickActivate(2)"
-                                    class="w-full py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-sm font-semibold rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all shadow-sm flex items-center justify-center gap-1">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                    Activate Now
-                                </button>
-                            </div>
-
-                            <!-- Premium -->
-                            <div
-                                class="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-400 transition-all group">
-                                <div class="flex justify-between items-start mb-2">
-                                    <div>
-                                        <h4 class="font-bold text-gray-900">Premium</h4>
-                                        <p class="text-xs text-gray-600">GHS 1,000</p>
-                                    </div>
-                                    <span class="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-full">12mo</span>
-                                </div>
-                                <ul class="text-xs text-gray-600 mb-3 space-y-1">
-                                    <li>📚 500 students</li>
-                                    <li>🏫 20 classes</li>
-                                </ul>
-                                <button onclick="quickActivate(3)"
-                                    class="w-full py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-sm font-semibold rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all shadow-sm flex items-center justify-center gap-1">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                    Activate Now
-                                </button>
-                            </div>
-
-                            <!-- Professional -->
-                            <div
-                                class="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-400 transition-all group">
-                                <div class="flex justify-between items-start mb-2">
-                                    <div>
-                                        <h4 class="font-bold text-gray-900">Professional</h4>
-                                        <p class="text-xs text-gray-600">GHS 2,000</p>
-                                    </div>
-                                    <span class="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-full">12mo</span>
-                                </div>
-                                <ul class="text-xs text-gray-600 mb-3 space-y-1">
-                                    <li>📚 1000 students</li>
-                                    <li>🏫 50 classes</li>
-                                </ul>
-                                <button onclick="quickActivate(4)"
-                                    class="w-full py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-sm font-semibold rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all shadow-sm flex items-center justify-center gap-1">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                    Activate Now
-                                </button>
-                            </div>
-
-                            <!-- Enterprise -->
-                            <div
-                                class="p-4 border-2 border-gray-200 rounded-xl hover:border-blue-400 transition-all group">
-                                <div class="flex justify-between items-start mb-2">
-                                    <div>
-                                        <h4 class="font-bold text-gray-900">Enterprise</h4>
-                                        <p class="text-xs text-gray-600">GHS 5,000</p>
-                                    </div>
-                                    <span class="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded-full">12mo</span>
-                                </div>
-                                <ul class="text-xs text-gray-600 mb-3 space-y-1">
-                                    <li>📚 5000 students</li>
-                                    <li>🏫 200 classes</li>
-                                </ul>
-                                <button onclick="quickActivate(5)"
-                                    class="w-full py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-sm font-semibold rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all shadow-sm flex items-center justify-center gap-1">
-                                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                    </svg>
-                                    Activate Now
-                                </button>
-                            </div>
-                        </div>
-                        <div class="text-xs text-gray-500 bg-blue-50 p-3 rounded-lg border border-blue-100">
-                            <strong>ℹ️ Note:</strong> Quick activate will apply this license to <strong>all year/term
-                                variations</strong> of the selected school automatically.
-                        </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10">
+                        <button onclick="applyTemplate(0)"
+                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                            data-template="0">
+                            <span class="block font-black text-[11px]">Trial</span>
+                            <span class="text-[9px] text-gray-400 font-bold uppercase">1 Week</span>
+                        </button>
+                        <button onclick="applyTemplate(1)"
+                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                            data-template="1">
+                            <span class="block font-black text-[11px]">Basic</span>
+                            <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
+                        </button>
+                        <button onclick="applyTemplate(2)"
+                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                            data-template="2">
+                            <span class="block font-black text-[11px]">Std</span>
+                            <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
+                        </button>
+                        <button onclick="applyTemplate(3)"
+                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                            data-template="3">
+                            <span class="block font-black text-[11px]">Prem</span>
+                            <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
+                        </button>
+                        <button onclick="applyTemplate(4)"
+                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                            data-template="4">
+                            <span class="block font-black text-[11px]">Prof</span>
+                            <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
+                        </button>
+                        <button onclick="applyTemplate(5)"
+                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                            data-template="5">
+                            <span class="block font-black text-[11px]">Ent</span>
+                            <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
+                        </button>
                     </div>
 
-                    <div class="border-t border-gray-200 pt-6 mt-6">
-                        <h3 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Or Customize
-                            Manually</h3>
-
-                        <!-- Template Selector (fills form fields) -->
-                        <div class="mb-4">
-                            <label class="block text-xs font-medium text-gray-600 mb-2">Load Template</label>
-                            <div class="grid grid-cols-4 gap-2">
-                                <button data-template="0" onclick="applyTemplate(0)"
-                                    class="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs text-center">Trial</button>
-                                <button data-template="1" onclick="applyTemplate(1)"
-                                    class="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs text-center">Basic</button>
-                                <button data-template="2" onclick="applyTemplate(2)"
-                                    class="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs text-center">Standard</button>
-                                <button data-template="3" onclick="applyTemplate(3)"
-                                    class="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs text-center">Premium</button>
-                                <button data-template="4" onclick="applyTemplate(4)"
-                                    class="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs text-center">Professional</button>
-                                <button data-template="5" onclick="applyTemplate(5)"
-                                    class="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs text-center">Enterprise</button>
-                                <button data-template="6" onclick="applyTemplate(6)"
-                                    class="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-xs text-center">Custom</button>
+                    <div class="space-y-5">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-xs font-black uppercase text-gray-400 ml-1">Max Students</label>
+                                <input id="maxStudents" type="number"
+                                    class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
+                            </div>
+                            <div>
+                                <label class="text-xs font-black uppercase text-gray-400 ml-1">Max Classes</label>
+                                <input id="maxClass" type="number"
+                                    class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
                             </div>
                         </div>
-
-                        <!-- Custom Parameters -->
-                        <div class="space-y-4 mb-6">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Max Students</label>
-                                <input id="maxStudents" type="number" min="1"
-                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="e.g., 500" />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">Max Classes</label>
-                                <input id="maxClass" type="number" min="1"
-                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="e.g., 20" />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">License Duration
-                                    (Months)</label>
-                                <input id="months" type="number" min="1" max="60"
-                                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    placeholder="e.g., 12" />
-                            </div>
-
-                            <!-- Expiry Displays -->
-                            <div id="currentExpiryDisplay" class="hidden space-y-2"></div>
-                            <div id="expectedExpiryDisplay" class="hidden space-y-2"></div>
-                            <div class="bg-amber-50 p-4 rounded-xl border border-amber-100 mt-4">
-                                <label class="block text-sm font-bold text-amber-800 mb-2">Activation Master
-                                    Password</label>
-                                <input id="activationPassword" type="password"
-                                    class="w-full px-4 py-3 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
-                                    placeholder="Enter portal password to confirm..." />
-                            </div>
+                        <div>
+                            <label class="text-xs font-black uppercase text-gray-400 ml-1">Duration (Months)</label>
+                            <input id="months" type="number"
+                                class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
                         </div>
 
-                        <!-- Activate Button -->
+                        <div id="currentExpiryDisplay" class="hidden space-y-2"></div>
+                        <div id="expectedExpiryDisplay" class="hidden space-y-2"></div>
+
+                        <div class="bg-amber-50 p-6 rounded-3xl border-2 border-amber-100 mt-6 shadow-highlight">
+                            <label class="block text-sm font-black text-amber-800 mb-3 uppercase tracking-wider">🔒
+                                Activation Master Password</label>
+                            <input id="activationPassword" type="password"
+                                class="w-full px-6 py-4 bg-white/80 border-2 border-amber-200 rounded-2xl focus:border-amber-500 outline-none font-bold text-center"
+                                placeholder="Verify to activate" />
+                        </div>
+
                         <button onclick="activateLicense()"
-                            class="w-full py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-bold rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg flex items-center justify-center gap-2">
-                            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Activate License
+                            class="w-full py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-xl hover:shadow-blue-500/40 text-lg uppercase tracking-widest">
+                            Confirm Activation
                         </button>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 </body>
 
 </html>
