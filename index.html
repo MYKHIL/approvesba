@@ -169,7 +169,10 @@
         window.selectSchool = async function (schoolId) {
             selectedSchool = schools.find(s => s.id === schoolId);
             renderSchools(document.getElementById('searchInput').value);
-            if (selectedSchool) await loadSubscription(selectedSchool);
+            if (selectedSchool) {
+                selectedSchool.existingExpiry = null; // Reset
+                await loadSubscription(selectedSchool);
+            }
             updateUI();
         }
 
@@ -186,6 +189,7 @@
                     document.getElementById('months').value = 12;
                     if (data.expiryDate) {
                         const date = data.expiryDate.toDate();
+                        school.existingExpiry = date; // Store for extension logic
                         curExp.innerHTML = `
                             <div class="p-2 bg-blue-50 border border-blue-200 rounded-lg text-xs font-bold text-blue-700 flex items-center gap-2">
                                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 8v4l3 3" stroke-width="2" stroke-linecap="round"/></svg>
@@ -198,6 +202,7 @@
                     curExp.classList.add('hidden');
                 }
             } catch (e) {
+                console.error("Load sub failed", e);
                 curExp.classList.add('hidden');
             }
             updateExpectedExpiry();
@@ -224,7 +229,14 @@
             const m = parseInt(document.getElementById('months').value) || 0;
             const exp = document.getElementById('expectedExpiryDisplay');
             if (m === 0) { exp.classList.add('hidden'); return; }
-            const date = new Date();
+
+            // Smart Expiry: If current license is still valid, extend from that date. Otherwise, from TODAY.
+            const now = new Date();
+            const baseDate = (selectedSchool?.existingExpiry && selectedSchool.existingExpiry > now)
+                ? new Date(selectedSchool.existingExpiry)
+                : now;
+
+            const date = new Date(baseDate);
             date.setMonth(date.getMonth() + m);
             exp.innerHTML = `
                 <div class="p-2 bg-green-50 border border-green-200 rounded-lg text-xs font-bold text-green-700 flex items-center gap-2">
