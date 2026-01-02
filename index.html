@@ -119,14 +119,14 @@
                     const snapshot = await getDocs(collection(db, 'schools'));
                     snapshot.forEach(doc => {
                         const data = doc.data();
-                        if (data.Access !== false) {
-                            schools.push({
-                                id: doc.id,
-                                name: data.settings?.schoolName || 'Unknown School',
-                                dbIndex: parseInt(dbIndex),
-                                data: data
-                            });
-                        }
+                        // SHOW ALL SCHOOLS (Even Access: false) so we can activate them
+                        schools.push({
+                            id: doc.id,
+                            name: data.settings?.schoolName || 'Unknown School',
+                            dbIndex: parseInt(dbIndex),
+                            data: data,
+                            access: data.Access // Store access status
+                        });
                     });
                 });
                 await Promise.all(promises);
@@ -160,7 +160,10 @@
                             <h3 class="font-semibold text-gray-900">${school.name}</h3>
                             <p class="text-xs text-gray-500">ID: ${school.id}</p>
                         </div>
-                        <span class="text-[10px] px-2 py-1 bg-gray-100 rounded text-gray-400">DB ${school.dbIndex}</span>
+                        <div class="flex flex-col items-end gap-1">
+                            <span class="text-[10px] px-2 py-1 bg-gray-100 rounded text-gray-400">DB ${school.dbIndex}</span>
+                            ${school.access === false ? '<span class="text-[10px] px-2 py-1 bg-red-100 text-red-700 rounded font-bold">PENDING</span>' : ''}
+                        </div>
                     </div>
                 </div>
             `).join('');
@@ -276,7 +279,13 @@
                     lastActivated: Timestamp.now()
                 };
                 await setDoc(doc(dbs[selectedSchool.dbIndex], 'subscriptions', selectedSchool.id.split('_')[0]), sub);
-                alert(`✅ ${t.name} activated!`);
+
+                // ALSO SET ACCESS = TRUE ON THE SCHOOL DOCUMENT
+                const schoolRef = doc(dbs[selectedSchool.dbIndex], 'schools', selectedSchool.id);
+                await setDoc(schoolRef, { Access: true }, { merge: true });
+                console.log(`[DB ${selectedSchool.dbIndex}] Updated Access=true for ${selectedSchool.id}`);
+
+                alert(`✅ ${t.name} activated & Access Granted!`);
                 resetPortal();
             } catch (e) {
                 showMessage('❌ Activation failed', 'error');
@@ -305,7 +314,13 @@
                     lastActivated: Timestamp.now()
                 };
                 await setDoc(doc(dbs[selectedSchool.dbIndex], 'subscriptions', selectedSchool.id.split('_')[0]), sub);
-                alert('✅ Template activated!');
+
+                // ALSO SET ACCESS = TRUE ON THE SCHOOL DOCUMENT
+                const schoolRef = doc(dbs[selectedSchool.dbIndex], 'schools', selectedSchool.id);
+                await setDoc(schoolRef, { Access: true }, { merge: true });
+                console.log(`[DB ${selectedSchool.dbIndex}] Updated Access=true for ${selectedSchool.id}`);
+
+                alert('✅ Template activated & Access Granted!');
                 resetPortal();
             } catch (e) {
                 showMessage('❌ Activation failed', 'error');
