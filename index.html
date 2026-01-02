@@ -123,6 +123,7 @@
                         schools.push({
                             id: doc.id,
                             name: data.settings?.schoolName || 'Unknown School',
+                            baseName: doc.id.split('_')[0],
                             dbIndex: parseInt(dbIndex),
                             data: data,
                             access: data.Access // Store access status
@@ -142,35 +143,55 @@
 
         function renderSchools(filter = '') {
             const schoolList = document.getElementById('schoolList');
-            const filtered = schools.filter(s =>
-                s.name.toLowerCase().includes(filter.toLowerCase()) ||
-                s.id.toLowerCase().includes(filter.toLowerCase())
-            );
 
-            if (filtered.length === 0) {
+            // GROUPING LOGIC
+            const groups = {};
+            schools.forEach(school => {
+                // Filter first
+                if (filter && !school.name.toLowerCase().includes(filter.toLowerCase()) && !school.id.toLowerCase().includes(filter.toLowerCase())) {
+                    return;
+                }
+
+                if (!groups[school.baseName]) {
+                    groups[school.baseName] = {
+                        ...school,
+                        variants: 1,
+                        anyPending: school.access === false
+                    };
+                } else {
+                    groups[school.baseName].variants++;
+                    if (school.access === false) groups[school.baseName].anyPending = true;
+                }
+            });
+
+            const uniqueSchools = Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+
+            if (uniqueSchools.length === 0) {
                 schoolList.innerHTML = '<div class="text-center text-gray-500 py-8">No schools found</div>';
                 return;
             }
 
-            schoolList.innerHTML = filtered.map(school => `
-                <div class="p-4 border rounded-lg hover:bg-blue-50 cursor-pointer transition-colors ${selectedSchool?.id === school.id ? 'bg-blue-100 border-blue-500 ring-2' : ''}"
-                     onclick="selectSchool('${school.id.replace(/'/g, "\\'")}')">
+            schoolList.innerHTML = uniqueSchools.map(school => `
+                <div class="p-4 border rounded-lg hover:bg-blue-50 cursor-pointer transition-colors ${selectedSchool?.baseName === school.baseName ? 'bg-blue-100 border-blue-500 ring-2' : ''}"
+                     onclick="selectSchool('${school.baseName}')">
                     <div class="flex justify-between items-start">
                         <div>
                             <h3 class="font-semibold text-gray-900">${school.name}</h3>
-                            <p class="text-xs text-gray-500">ID: ${school.id}</p>
+                            <p class="text-xs text-gray-500">ID: ${school.baseName} <span class="bg-gray-200 px-1 rounded text-[9px] ml-1">${school.variants} Variants</span></p>
                         </div>
                         <div class="flex flex-col items-end gap-1">
                             <span class="text-[10px] px-2 py-1 bg-gray-100 rounded text-gray-400">DB ${school.dbIndex}</span>
-                            ${school.access === false ? '<span class="text-[10px] px-2 py-1 bg-red-100 text-red-700 rounded font-bold">PENDING</span>' : ''}
+                            ${school.anyPending ? '<span class="text-[10px] px-2 py-1 bg-red-100 text-red-700 rounded font-bold">PENDING</span>' : ''}
                         </div>
                     </div>
                 </div>
             `).join('');
         }
 
-        window.selectSchool = async function (schoolId) {
-            selectedSchool = schools.find(s => s.id === schoolId);
+        window.selectSchool = async function (baseName) {
+            // Find representative (just the first match in the raw list)
+            selectedSchool = schools.find(s => s.baseName === baseName);
+
             renderSchools(document.getElementById('searchInput').value);
             if (selectedSchool) {
                 selectedSchool.existingExpiry = null; // Reset
@@ -189,25 +210,57 @@
                     const data = subDoc.data();
                     document.getElementById('maxStudents').value = data.maxStudents || '';
                     document.getElementById('maxClass').value = data.maxClass || '';
-                    document.getElementById('months').value = 12;
+
                     if (data.expiryDate) {
-                        const date = data.expiryDate.toDate();
-                        school.existingExpiry = date; // Store for extension logic
+                        // Calculate remaining time
+                        const now = new Date();
+                        const expDate = data.expiryDate.toDate();
+                        school.existingExpiry = expDate;
+
+                        const diffTime = expDate - now;
+                        const isExpired = diffTime < 0;
+                        const diffDays = Math.abs(Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+
+                        // Human readable duration
+                        let remainingStr = '';
+                        if (diffDays > 365) {
+                            const y = Math.floor(diffDays / 365);
+                            const d = diffDays % 365;
+                            remainingStr = `${y} Year${y > 1 ? 's' : ''} ${d} Day${d !== 1 ? 's' : ''}`;
+                        } else if (diffDays > 30) {
+                            const m = Math.floor(diffDays / 30);
+                            const d = diffDays % 30;
+                            remainingStr = `${m} Month${m > 1 ? 's' : ''} ${d} Day${d !== 1 ? 's' : ''}`;
+                        } else {
+                            remainingStr = `${diffDays} Day${diffDays !== 1 ? 's' : ''}`;
+                        }
+
+                        const statusColor = isExpired ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200';
+                        const statusIcon = isExpired ? '<path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" stroke-width="2" stroke-linecap="round"/>' : '<path d="M12 8v4l3 3" stroke-width="2" stroke-linecap="round"/>';
+
                         curExp.innerHTML = `
-                            <div class="p-2 bg-blue-50 border border-blue-200 rounded-lg text-xs font-bold text-blue-700 flex items-center gap-2">
-                                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M12 8v4l3 3" stroke-width="2" stroke-linecap="round"/></svg>
-                                Existing Expiry: ${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                            <div class="p-3 ${statusColor} border rounded-lg text-xs font-bold flex items-center gap-2">
+                                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">${statusIcon}</svg>
+                                <div>
+                                    <p class="uppercase tracking-wider text-[10px] opacity-75">${isExpired ? 'Expired' : 'Active Subscription'}</p>
+                                    <p class="text-sm">${isExpired ? 'Expired ago: ' : 'Remaining: '} ${remainingStr}</p>
+                                    <p class="text-[10px] opacity-75 mt-1">Existing Expiry Date: ${expDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                                </div>
                             </div>`;
                         curExp.classList.remove('hidden');
+                    } else {
+                        curExp.classList.add('hidden');
                     }
                 } else {
-                    document.getElementById('months').value = 12;
                     curExp.classList.add('hidden');
+                    // AUTO-SELECT TRIAL FOR NEW SCHOOLS
+                    applyTemplate(0);
                 }
             } catch (e) {
                 console.error("Load sub failed", e);
                 curExp.classList.add('hidden');
             }
+            // Ensure inputs are refreshed
             updateExpectedExpiry();
         }
 
@@ -229,18 +282,21 @@
         }
 
         window.updateExpectedExpiry = function () {
-            const m = parseInt(document.getElementById('months').value) || 0;
+            const val = parseInt(document.getElementById('durationValue').value) || 0;
+            const unit = document.getElementById('durationUnit').value;
             const exp = document.getElementById('expectedExpiryDisplay');
-            if (m === 0) { exp.classList.add('hidden'); return; }
 
-            // Smart Expiry: If current license is still valid, extend from that date. Otherwise, from TODAY.
-            const now = new Date();
-            const baseDate = (selectedSchool?.existingExpiry && selectedSchool.existingExpiry > now)
-                ? new Date(selectedSchool.existingExpiry)
-                : now;
+            if (val === 0) { exp.classList.add('hidden'); return; }
 
-            const date = new Date(baseDate);
-            date.setMonth(date.getMonth() + m);
+            // Calculate from TODAY
+            const date = new Date();
+
+            // Add Duration based on Unit
+            if (unit === 'days') date.setDate(date.getDate() + val);
+            else if (unit === 'weeks') date.setDate(date.getDate() + (val * 7));
+            else if (unit === 'months') date.setMonth(date.getMonth() + val);
+            else if (unit === 'years') date.setFullYear(date.getFullYear() + val);
+
             exp.innerHTML = `
                 <div class="p-2 bg-green-50 border border-green-200 rounded-lg text-xs font-bold text-green-700 flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14" stroke-width="2" stroke-linecap="round"/></svg>
@@ -253,7 +309,17 @@
             const t = LICENSE_TEMPLATES[idx];
             document.getElementById('maxStudents').value = t.maxStudents;
             document.getElementById('maxClass').value = t.maxClass;
-            document.getElementById('months').value = t.months;
+
+            // Auto-fill Unit & Value based on template type
+            if (t.name === 'Trial') {
+                document.getElementById('durationValue').value = 1;
+                document.getElementById('durationUnit').value = 'weeks';
+            } else {
+                // Paid Plans default to 1 Year
+                document.getElementById('durationValue').value = 1;
+                document.getElementById('durationUnit').value = 'years';
+            }
+
             updateExpectedExpiry();
             document.querySelectorAll('[data-template]').forEach(el => el.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50'));
             document.querySelector(`[data-template="${idx}"]`).classList.add('ring-2', 'ring-blue-500', 'bg-blue-50');
@@ -262,7 +328,7 @@
         window.quickActivate = async function (idx) {
             const t = LICENSE_TEMPLATES[idx];
             if (!selectedSchool || !(await verifyMasterPassword())) return;
-            const msg = `Quick Activate ${t.name} for ${selectedSchool.name}?\n\nStudents: ${t.maxStudents}\nClasses: ${t.maxClass}\nDuration: ${t.months}mo`;
+            const msg = `Quick Activate ${t.name} for ${selectedSchool.name}?\n\nStudents: ${t.maxStudents}\nClasses: ${t.maxClass}\nDuration: ${t.months}mo\n\nApplies to ALL variations of "${selectedSchool.baseName}"`;
             if (!confirm(msg)) return;
 
             showLoading(true);
@@ -278,16 +344,29 @@
                     activationHash: await hashPassword(document.getElementById('activationPassword').value),
                     lastActivated: Timestamp.now()
                 };
-                await setDoc(doc(dbs[selectedSchool.dbIndex], 'subscriptions', selectedSchool.id.split('_')[0]), sub);
 
-                // ALSO SET ACCESS = TRUE ON THE SCHOOL DOCUMENT
-                const schoolRef = doc(dbs[selectedSchool.dbIndex], 'schools', selectedSchool.id);
-                await setDoc(schoolRef, { Access: true }, { merge: true });
-                console.log(`[DB ${selectedSchool.dbIndex}] Updated Access=true for ${selectedSchool.id}`);
+                // Write Subscription (One per base name)
+                await setDoc(doc(dbs[selectedSchool.dbIndex], 'subscriptions', selectedSchool.baseName), sub);
 
-                alert(`✅ ${t.name} activated & Access Granted!`);
+                // BATCH UPDATE ACCESS FOR ALL VARIANTS
+                const variants = schools.filter(s => s.baseName === selectedSchool.baseName);
+                const updates = variants.map(variant => {
+                    const schoolRef = doc(dbs[variant.dbIndex], 'schools', variant.id);
+                    return setDoc(schoolRef, { Access: true }, { merge: true });
+                });
+
+                await Promise.all(updates);
+                console.log(`[Batch Update] Granted access to ${variants.length} content variants for ${selectedSchool.baseName}`);
+
+                alert(`✅ ${t.name} activated & Access Granted for ${variants.length} variants!`);
+
+                // Update local model to reflect change immediately without refresh
+                variants.forEach(v => v.access = true);
+                renderSchools(document.getElementById('searchInput').value);
+
                 resetPortal();
             } catch (e) {
+                console.error(e);
                 showMessage('❌ Activation failed', 'error');
             } finally {
                 showLoading(false);
@@ -298,14 +377,21 @@
             if (!selectedSchool || !(await verifyMasterPassword())) return;
             const s = parseInt(document.getElementById('maxStudents').value);
             const c = parseInt(document.getElementById('maxClass').value);
-            const m = parseInt(document.getElementById('months').value);
-            if (!s || !c || !m) { showMessage('Please fill all fields', 'error'); return; }
-            if (!confirm(`Activate manual license for ${selectedSchool.name}?`)) return;
+            const val = parseInt(document.getElementById('durationValue').value);
+            const unit = document.getElementById('durationUnit').value;
+
+            if (!s || !c || !val) { showMessage('Please fill all fields', 'error'); return; }
+            if (!confirm(`Activate manual license for ${selectedSchool.name} (All Variations)?`)) return;
 
             showLoading(true);
             try {
+                // Calculate Expiry Date (From TODAY)
                 const date = new Date();
-                date.setMonth(date.getMonth() + m);
+                if (unit === 'days') date.setDate(date.getDate() + val);
+                else if (unit === 'weeks') date.setDate(date.getDate() + (val * 7));
+                else if (unit === 'months') date.setMonth(date.getMonth() + val);
+                else if (unit === 'years') date.setFullYear(date.getFullYear() + val);
+
                 const sub = {
                     maxStudents: s,
                     maxClass: c,
@@ -313,16 +399,29 @@
                     activationHash: await hashPassword(document.getElementById('activationPassword').value),
                     lastActivated: Timestamp.now()
                 };
-                await setDoc(doc(dbs[selectedSchool.dbIndex], 'subscriptions', selectedSchool.id.split('_')[0]), sub);
 
-                // ALSO SET ACCESS = TRUE ON THE SCHOOL DOCUMENT
-                const schoolRef = doc(dbs[selectedSchool.dbIndex], 'schools', selectedSchool.id);
-                await setDoc(schoolRef, { Access: true }, { merge: true });
-                console.log(`[DB ${selectedSchool.dbIndex}] Updated Access=true for ${selectedSchool.id}`);
+                // Write Subscription
+                await setDoc(doc(dbs[selectedSchool.dbIndex], 'subscriptions', selectedSchool.baseName), sub);
+
+                // BATCH UPDATE ACCESS FOR ALL VARIANTS
+                const variants = schools.filter(s => s.baseName === selectedSchool.baseName);
+                const updates = variants.map(variant => {
+                    const schoolRef = doc(dbs[variant.dbIndex], 'schools', variant.id);
+                    return setDoc(schoolRef, { Access: true }, { merge: true });
+                });
+
+                await Promise.all(updates);
+                console.log(`[Batch Update] Granted access to ${variants.length} content variants for ${selectedSchool.baseName}`);
 
                 alert('✅ Template activated & Access Granted!');
+
+                // Update local model
+                variants.forEach(v => v.access = true);
+                renderSchools(document.getElementById('searchInput').value);
+
                 resetPortal();
             } catch (e) {
+                console.error(e);
                 showMessage('❌ Activation failed', 'error');
             } finally {
                 showLoading(false);
@@ -353,7 +452,8 @@
                 fetchAllSchools();
             }
             document.getElementById('searchInput').addEventListener('input', (e) => renderSchools(e.target.value));
-            document.getElementById('months').addEventListener('input', updateExpectedExpiry);
+            document.getElementById('durationValue').addEventListener('input', updateExpectedExpiry);
+            document.getElementById('durationUnit').addEventListener('change', updateExpectedExpiry);
             document.getElementById('refreshBtn').addEventListener('click', fetchAllSchools);
         });
     </script>
@@ -477,10 +577,31 @@
                                     class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
                             </div>
                         </div>
-                        <div>
-                            <label class="text-xs font-black uppercase text-gray-400 ml-1">Duration (Months)</label>
-                            <input id="months" type="number"
-                                class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-xs font-black uppercase text-gray-400 ml-1">Duration Value</label>
+                                <input id="durationValue" type="number" min="1"
+                                    class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
+                            </div>
+                            <div>
+                                <label class="text-xs font-black uppercase text-gray-400 ml-1">Unit</label>
+                                <div class="relative">
+                                    <select id="durationUnit"
+                                        class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold appearance-none cursor-pointer">
+                                        <option value="days">Days</option>
+                                        <option value="weeks">Weeks</option>
+                                        <option value="months">Months</option>
+                                        <option value="years">Years</option>
+                                    </select>
+                                    <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                                        <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24"
+                                            stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div id="currentExpiryDisplay" class="hidden space-y-2"></div>
