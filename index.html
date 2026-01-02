@@ -457,6 +457,7 @@
             document.getElementById('refreshBtn').addEventListener('click', fetchAllSchools);
         });
     </script>
+    <script src="offline-activation.js"></script>
 </head>
 
 <body class="bg-gray-50 font-sans text-gray-900">
@@ -516,109 +517,234 @@
 
             <!-- ⚙️ Activation Panel -->
             <div class="space-y-8">
-                <div id="selectedSchool" class="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
-                    <p class="text-gray-400 text-center py-4 italic font-medium">Select a school to configure license
-                    </p>
-                </div>
-
-                <div id="licenseForm"
-                    class="hidden bg-white rounded-3xl shadow-xl border border-gray-100 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <h2 class="text-3xl font-black tracking-tight mb-8">License Setup</h2>
-
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10">
-                        <button onclick="applyTemplate(0)"
-                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
-                            data-template="0">
-                            <span class="block font-black text-[11px]">Trial</span>
-                            <span class="text-[9px] text-gray-400 font-bold uppercase">1 Week</span>
+                <!-- Mode Toggle -->
+                <div class="bg-white rounded-3xl shadow-xl border border-gray-100 p-6">
+                    <div class="flex gap-3">
+                        <button id="onlineToggle" onclick="switchMode('online')"
+                            class="flex-1 py-3 px-6 rounded-xl font-black text-sm transition-all bg-blue-600 text-white">
+                            🌐 Online Activation
                         </button>
-                        <button onclick="applyTemplate(1)"
-                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
-                            data-template="1">
-                            <span class="block font-black text-[11px]">Basic</span>
-                            <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
-                        </button>
-                        <button onclick="applyTemplate(2)"
-                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
-                            data-template="2">
-                            <span class="block font-black text-[11px]">Std</span>
-                            <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
-                        </button>
-                        <button onclick="applyTemplate(3)"
-                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
-                            data-template="3">
-                            <span class="block font-black text-[11px]">Prem</span>
-                            <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
-                        </button>
-                        <button onclick="applyTemplate(4)"
-                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
-                            data-template="4">
-                            <span class="block font-black text-[11px]">Prof</span>
-                            <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
-                        </button>
-                        <button onclick="applyTemplate(5)"
-                            class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
-                            data-template="5">
-                            <span class="block font-black text-[11px]">Ent</span>
-                            <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
+                        <button id="offlineToggle" onclick="switchMode('offline')"
+                            class="flex-1 py-3 px-6 rounded-xl font-black text-sm transition-all bg-gray-100 text-gray-600">
+                            💾 Offline Activation
                         </button>
                     </div>
+                </div>
 
-                    <div class="space-y-5">
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="text-xs font-black uppercase text-gray-400 ml-1">Max Students</label>
-                                <input id="maxStudents" type="number"
-                                    class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
-                            </div>
-                            <div>
-                                <label class="text-xs font-black uppercase text-gray-400 ml-1">Max Classes</label>
-                                <input id="maxClass" type="number"
-                                    class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
-                            </div>
+                <!-- Online Activation Panel -->
+                <div id="onlinePanel">
+                    <div id="selectedSchool" class="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
+                        <p class="text-gray-400 text-center py-4 italic font-medium">Select a school to configure
+                            license
+                        </p>
+                    </div>
+
+                    <div id="licenseForm"
+                        class="hidden bg-white rounded-3xl shadow-xl border border-gray-100 p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <h2 class="text-3xl font-black tracking-tight mb-8">License Setup</h2>
+
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10">
+                            <button onclick="applyTemplate(0)"
+                                class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                                data-template="0">
+                                <span class="block font-black text-[11px]">Trial</span>
+                                <span class="text-[9px] text-gray-400 font-bold uppercase">1 Week</span>
+                            </button>
+                            <button onclick="applyTemplate(1)"
+                                class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                                data-template="1">
+                                <span class="block font-black text-[11px]">Basic</span>
+                                <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
+                            </button>
+                            <button onclick="applyTemplate(2)"
+                                class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                                data-template="2">
+                                <span class="block font-black text-[11px]">Std</span>
+                                <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
+                            </button>
+                            <button onclick="applyTemplate(3)"
+                                class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                                data-template="3">
+                                <span class="block font-black text-[11px]">Prem</span>
+                                <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
+                            </button>
+                            <button onclick="applyTemplate(4)"
+                                class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                                data-template="4">
+                                <span class="block font-black text-[11px]">Prof</span>
+                                <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
+                            </button>
+                            <button onclick="applyTemplate(5)"
+                                class="p-3 border-2 border-gray-50 rounded-2xl hover:border-blue-200 transition-all text-left"
+                                data-template="5">
+                                <span class="block font-black text-[11px]">Ent</span>
+                                <span class="text-[9px] text-gray-400 font-bold uppercase">12mo</span>
+                            </button>
                         </div>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="text-xs font-black uppercase text-gray-400 ml-1">Duration Value</label>
-                                <input id="durationValue" type="number" min="1"
-                                    class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
+
+                        <div class="space-y-5">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-xs font-black uppercase text-gray-400 ml-1">Max Students</label>
+                                    <input id="maxStudents" type="number"
+                                        class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
+                                </div>
+                                <div>
+                                    <label class="text-xs font-black uppercase text-gray-400 ml-1">Max Classes</label>
+                                    <input id="maxClass" type="number"
+                                        class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
+                                </div>
                             </div>
-                            <div>
-                                <label class="text-xs font-black uppercase text-gray-400 ml-1">Unit</label>
-                                <div class="relative">
-                                    <select id="durationUnit"
-                                        class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold appearance-none cursor-pointer">
-                                        <option value="days">Days</option>
-                                        <option value="weeks">Weeks</option>
-                                        <option value="months">Months</option>
-                                        <option value="years">Years</option>
-                                    </select>
-                                    <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                                        <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24"
-                                            stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M19 9l-7 7-7-7" />
-                                        </svg>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-xs font-black uppercase text-gray-400 ml-1">Duration
+                                        Value</label>
+                                    <input id="durationValue" type="number" min="1"
+                                        class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold" />
+                                </div>
+                                <div>
+                                    <label class="text-xs font-black uppercase text-gray-400 ml-1">Unit</label>
+                                    <div class="relative">
+                                        <select id="durationUnit"
+                                            class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold appearance-none cursor-pointer">
+                                            <option value="days">Days</option>
+                                            <option value="weeks">Weeks</option>
+                                            <option value="months">Months</option>
+                                            <option value="years">Years</option>
+                                        </select>
+                                        <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                                            <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24"
+                                                stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+
+                            <div id="currentExpiryDisplay" class="hidden space-y-2"></div>
+                            <div id="expectedExpiryDisplay" class="hidden space-y-2"></div>
+
+                            <div class="bg-amber-50 p-6 rounded-3xl border-2 border-amber-100 mt-6 shadow-highlight">
+                                <label class="block text-sm font-black text-amber-800 mb-3 uppercase tracking-wider">🔒
+                                    Activation Master Password</label>
+                                <input id="activationPassword" type="password"
+                                    class="w-full px-6 py-4 bg-white/80 border-2 border-amber-200 rounded-2xl focus:border-amber-500 outline-none font-bold text-center"
+                                    placeholder="Verify to activate" />
+                            </div>
+
+                            <button onclick="activateLicense()"
+                                class="w-full py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-xl hover:shadow-blue-500/40 text-lg uppercase tracking-widest">
+                                Confirm Activation
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Offline Activation Panel -->
+                <div id="offlinePanel" class="hidden">
+                    <div class="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
+                        <h2 class="text-3xl font-black tracking-tight mb-6">Offline License Generation</h2>
+
+                        <!-- Drop Zone -->
+                        <div id="tokenDropZone"
+                            class="border-4 border-dashed border-gray-200 rounded-3xl p-12 text-center mb-8 transition-all cursor-pointer hover:border-gray-300">
+                            <input type="file" id="tokenFileInput" accept=".token" onchange="onTokenFileSelected(event)"
+                                class="hidden">
+                            <div onclick="document.getElementById('tokenFileInput').click()">
+                                <div class="text-6xl mb-4">📄</div>
+                                <p id="dropZoneText" class="text-lg font-bold text-gray-600 mb-2">Drop .token file here
+                                    or click to browse</p>
+                                <p class="text-sm text-gray-400">Upload request file from SBA Pro Master desktop app</p>
+                            </div>
                         </div>
 
-                        <div id="currentExpiryDisplay" class="hidden space-y-2"></div>
-                        <div id="expectedExpiryDisplay" class="hidden space-y-2"></div>
+                        <!-- Fields Container (hidden until file is loaded) -->
+                        <div id="offlineFieldsContainer" class="hidden space-y-6">
+                            <!-- Read-only fields from token -->
+                            <div class="bg-gray-50 p-6 rounded-2xl space-y-4">
+                                <h3 class="font-black text-sm uppercase text-gray-500 mb-4">📋 Request Details</h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 mb-2">User Name /
+                                            Company</label>
+                                        <input id="offlineUserName" type="text" readonly
+                                            class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl font-medium text-gray-700">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 mb-2">Phone Number</label>
+                                        <input id="offlinePhone" type="text" readonly
+                                            class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl font-medium text-gray-700">
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 mb-2">Transaction ID</label>
+                                        <input id="offlineTransId" type="text" readonly
+                                            class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl font-medium text-gray-700">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 mb-2">Product ID</label>
+                                        <input id="offlineProdId" type="text" readonly
+                                            class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl font-medium text-gray-700">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 mb-2">Days Remaining</label>
+                                    <input id="offlineRemaining" type="text" readonly
+                                        class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl font-medium text-gray-700">
+                                </div>
+                            </div>
 
-                        <div class="bg-amber-50 p-6 rounded-3xl border-2 border-amber-100 mt-6 shadow-highlight">
-                            <label class="block text-sm font-black text-amber-800 mb-3 uppercase tracking-wider">🔒
-                                Activation Master Password</label>
-                            <input id="activationPassword" type="password"
-                                class="w-full px-6 py-4 bg-white/80 border-2 border-amber-200 rounded-2xl focus:border-amber-500 outline-none font-bold text-center"
-                                placeholder="Verify to activate" />
+                            <!-- Editable fields -->
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-black uppercase text-gray-400 mb-2">Requested
+                                        Days</label>
+                                    <input id="offlineRequested" type="number" min="1"
+                                        class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-black uppercase text-gray-400 mb-2">Registration
+                                        Type</label>
+                                    <div class="relative">
+                                        <select id="offlineRegType"
+                                            class="w-full px-5 py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-500 outline-none font-bold appearance-none cursor-pointer">
+                                            <option>Trial</option>
+                                            <option>Basic</option>
+                                            <option>Standard</option>
+                                            <option>Premium</option>
+                                            <option>Professional</option>
+                                            <option>Enterprise</option>
+                                            <option>Full</option>
+                                        </select>
+                                        <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                                            <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24"
+                                                stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Master Password -->
+                            <div class="bg-amber-50 p-6 rounded-3xl border-2 border-amber-100">
+                                <label class="block text-sm font-black text-amber-800 mb-3 uppercase tracking-wider">🔒
+                                    Master Password</label>
+                                <input id="offlinePassword" type="password"
+                                    class="w-full px-6 py-4 bg-white/80 border-2 border-amber-200 rounded-2xl focus:border-amber-500 outline-none font-bold text-center"
+                                    placeholder="Enter password to generate license">
+                            </div>
+
+                            <!-- Generate Button -->
+                            <button onclick="generateOfflineLicense()"
+                                class="w-full py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-xl hover:shadow-blue-500/40 text-lg uppercase tracking-widest">
+                                Generate & Download .slic File
+                            </button>
                         </div>
-
-                        <button onclick="activateLicense()"
-                            class="w-full py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-xl hover:shadow-blue-500/40 text-lg uppercase tracking-widest">
-                            Confirm Activation
-                        </button>
                     </div>
                 </div>
             </div>
