@@ -528,7 +528,7 @@
 
                 // Cleanup Option
                 if (confirm(`Do you want to DELETE "${baseName}" from the SOURCE Database ${selectedSchool.dbIndex} now?\n\nOnly do this if you have verified the migration and updated the Vercel mapping.`)) {
-                    showLoadingOverlay(`Deleting from Source DB ${selectedSchool.dbIndex}...`, true);
+                    showLoadingOverlay(`Starting Cleanup (0%)...`, true);
                     console.log(`[Migration] CLEANUP: Starting removal from Source DB ${selectedSchool.dbIndex}`);
 
                     const subcollections = [
@@ -538,15 +538,30 @@
                         'terms', 'config', 'settings'
                     ];
 
-                    // 1. Verify/Log Subscription Validity
-                    const sourceSub = await getDoc(doc(sourceDb, 'subscriptions', baseName));
-                    if (sourceSub.exists()) {
-                        const expiry = sourceSub.data().expiryDate?.toDate();
-                        console.log(`[Migration] Source Subscription Expiry:`, expiry);
-                        if (expiry && expiry < new Date()) {
-                            console.warn(`[Migration] ⚠️ WARNING: Source subscription is EXPIRED. Cleanup might fail due to security rules.`);
+                    // 1. Diagnostics & Pre-fetch
+                    const failedDeletes = [];
+                    let totalOps = 1; // 1 for the subscription itself
+                    let completedOps = 0;
+
+                    const updateProgress = (msg) => {
+                        const percent = Math.round((completedOps / totalOps) * 100);
+                        showLoadingOverlay(`${msg} (${percent}%)`, true);
+                    };
+
+                    // Calculate total documents for progress tracking
+                    showLoadingOverlay('Calculating cleanup size...', true);
+                    for (const variant of variants) {
+                        totalOps += 1; // For the school document itself
+                        for (const sub of subcollections) {
+                            try {
+                                const snap = await getDocs(collection(sourceDb, 'schools', variant.id, sub));
+                                totalOps += snap.size;
+                            } catch (e) {
+                                console.warn(`[Migration] Could not calculate size for ${sub} in ${variant.id}`);
+                            }
                         }
                     }
+                    console.log(`[Migration] Total Deletion Operations: ${totalOps}`);
 
                     // 2. DELETE ALL SUBCOLLECTIONS ACROSS ALL VARIANTS
                     for (const variant of variants) {
@@ -557,11 +572,18 @@
                                 if (!snapshot.empty) {
                                     console.log(`[Migration] DELETING ${snapshot.size} docs from ${sub}...`);
                                     for (const d of snapshot.docs) {
-                                        await deleteDoc(doc(sourceDb, 'schools', variant.id, sub, d.id));
+                                        try {
+                                            await deleteDoc(doc(sourceDb, 'schools', variant.id, sub, d.id));
+                                            completedOps++;
+                                            updateProgress(`Deleting ${sub}...`);
+                                        } catch (err) {
+                                            failedDeletes.push(`${variant.id}/${sub}/${d.id}`);
+                                            console.error(`[Migration] Delete Failed: ${variant.id}/${sub}/${d.id}`);
+                                        }
                                     }
                                 }
                             } catch (delErr) {
-                                console.warn(`[Migration] Error deleting ${sub} for ${variant.id}:`, delErr);
+                                console.warn(`[Migration] Access error reading subcollection ${sub} for deletion.`);
                             }
                         }
                     }
@@ -569,14 +591,31 @@
                     // 3. DELETE ALL MAIN SCHOOL DOCUMENTS
                     for (const variant of variants) {
                         console.log(`[Migration] Step 3: Deleting school document ${variant.id}`);
-                        await deleteDoc(doc(sourceDb, 'schools', variant.id));
+                        try {
+                            await deleteDoc(doc(sourceDb, 'schools', variant.id));
+                            completedOps++;
+                            updateProgress(`Deleting variants...`);
+                        } catch (err) {
+                            failedDeletes.push(`schools/${variant.id}`);
+                        }
                     }
 
                     // 4. DELETE SUBSCRIPTION DOCUMENT LAST
                     console.log(`[Migration] Step 4: Deleting subscription ${baseName}`);
-                    await deleteDoc(doc(sourceDb, 'subscriptions', baseName));
+                    try {
+                        await deleteDoc(doc(sourceDb, 'subscriptions', baseName));
+                        completedOps++;
+                        updateProgress(`Finalizing...`);
+                    } catch (err) {
+                        failedDeletes.push(`subscriptions/${baseName}`);
+                    }
 
-                    alert('✅ Data deleted from source database.');
+                    if (failedDeletes.length > 0) {
+                        const ghostList = failedDeletes.join('\n- ');
+                        alert(`⚠️ Cleanup partially complete (${Math.round((completedOps / totalOps) * 100)}%).\n\nThe following "Ghost Documents" could not be deleted and require manual removal in Firebase Console:\n\n- ${ghostList}\n\nThis usually happens if the subscription expired during cleanup.`);
+                    } else {
+                        alert('✅ Migration Cleanup Complete! All source data removed.');
+                    }
                 }
 
                 // Refresh to show changes
