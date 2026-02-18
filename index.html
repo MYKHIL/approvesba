@@ -92,10 +92,11 @@
             }
 
             try {
+                const hashedPassword = await hashPassword(password);
                 const response = await fetch(`${API_BASE_URL}/verify`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password })
+                    body: JSON.stringify({ password: hashedPassword })
                 });
 
                 if (!response.ok) {
@@ -131,10 +132,11 @@
             }
 
             try {
+                const hashedPassword = await hashPassword(password);
                 const response = await fetch(`${API_BASE_URL}/verify`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password })
+                    body: JSON.stringify({ password: hashedPassword })
                 });
 
                 const result = await response.json();

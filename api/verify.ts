@@ -23,16 +23,15 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const { password } = req.body;
+        const { password } = req.body; // Actually the hash from client
         if (!password) {
             return res.status(400).json({ success: false, message: 'Password required' });
         }
 
-        const hash = crypto.createHash('sha256').update(password).digest('hex');
         const targetHash = process.env.PASSWORD_HASH;
 
-        if (hash === targetHash) {
-            return res.status(200).json({ success: true, hash });
+        if (password === targetHash) {
+            return res.status(200).json({ success: true, hash: password });
         } else {
             return res.status(401).json({ success: false, message: 'Invalid password' });
         }
