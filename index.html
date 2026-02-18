@@ -529,29 +529,53 @@
                 // Cleanup Option
                 if (confirm(`Do you want to DELETE "${baseName}" from the SOURCE Database ${selectedSchool.dbIndex} now?\n\nOnly do this if you have verified the migration and updated the Vercel mapping.`)) {
                     showLoadingOverlay(`Deleting from Source DB ${selectedSchool.dbIndex}...`, true);
-                    console.log(`[Migration] DELETING data from Source DB ${selectedSchool.dbIndex}`);
+                    console.log(`[Migration] CLEANUP: Starting removal from Source DB ${selectedSchool.dbIndex}`);
 
+                    const subcollections = [
+                        'students', 'classes', 'subjects', 'assessments',
+                        'score_buckets', 'scores', 'attendance', 'reports',
+                        'analytics', 'userLogs', 'activeSessions', 'metadata',
+                        'terms', 'config', 'settings'
+                    ];
+
+                    // 1. Verify/Log Subscription Validity
+                    const sourceSub = await getDoc(doc(sourceDb, 'subscriptions', baseName));
+                    if (sourceSub.exists()) {
+                        const expiry = sourceSub.data().expiryDate?.toDate();
+                        console.log(`[Migration] Source Subscription Expiry:`, expiry);
+                        if (expiry && expiry < new Date()) {
+                            console.warn(`[Migration] ⚠️ WARNING: Source subscription is EXPIRED. Cleanup might fail due to security rules.`);
+                        }
+                    }
+
+                    // 2. DELETE ALL SUBCOLLECTIONS ACROSS ALL VARIANTS
                     for (const variant of variants) {
-                        const subcollections = [
-                            'students', 'classes', 'subjects', 'assessments',
-                            'score_buckets', 'scores', 'attendance', 'reports',
-                            'analytics', 'userLogs', 'activeSessions', 'metadata',
-                            'terms', 'config', 'settings'
-                        ];
-
+                        console.log(`[Migration] Step 2: Deleting subcollections for ${variant.id}`);
                         for (const sub of subcollections) {
                             try {
                                 const snapshot = await getDocs(collection(sourceDb, 'schools', variant.id, sub));
-                                for (const d of snapshot.docs) {
-                                    await deleteDoc(doc(sourceDb, 'schools', variant.id, sub, d.id));
+                                if (!snapshot.empty) {
+                                    console.log(`[Migration] DELETING ${snapshot.size} docs from ${sub}...`);
+                                    for (const d of snapshot.docs) {
+                                        await deleteDoc(doc(sourceDb, 'schools', variant.id, sub, d.id));
+                                    }
                                 }
                             } catch (delErr) {
-                                console.warn(`[Migration] Could not delete subcollection ${sub}:`, delErr);
+                                console.warn(`[Migration] Error deleting ${sub} for ${variant.id}:`, delErr);
                             }
                         }
+                    }
+
+                    // 3. DELETE ALL MAIN SCHOOL DOCUMENTS
+                    for (const variant of variants) {
+                        console.log(`[Migration] Step 3: Deleting school document ${variant.id}`);
                         await deleteDoc(doc(sourceDb, 'schools', variant.id));
                     }
+
+                    // 4. DELETE SUBSCRIPTION DOCUMENT LAST
+                    console.log(`[Migration] Step 4: Deleting subscription ${baseName}`);
                     await deleteDoc(doc(sourceDb, 'subscriptions', baseName));
+
                     alert('✅ Data deleted from source database.');
                 }
 
