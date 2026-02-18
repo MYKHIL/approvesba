@@ -27,7 +27,7 @@
          * Dynamic Bootstrap: Fetch configuration and initialize Firebase
          */
         async function loadBootstrapData() {
-            showLoadingOverlay('Initializing Portal...', true);
+            if (window.showLoadingOverlay) window.showLoadingOverlay('Initializing Portal...', true);
             try {
                 const response = await fetch(`${API_BASE_URL}/firebase-config`);
                 if (!response.ok) throw new Error('Failed to load portal configuration');
@@ -95,6 +95,13 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password })
                 });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Login Verification Error:', response.status, errorText);
+                    alert(`API Error (${response.status}): Could not verify password. Make sure the local server is running.`);
+                    return;
+                }
 
                 const result = await response.json();
 
@@ -170,7 +177,7 @@
                 console.error('Fetch error:', error);
                 showMessage('Failed to fetch schools', 'error');
             } finally {
-                showLoading(false);
+                if (window.showLoadingOverlay) window.showLoadingOverlay('', false);
             }
         }
 
@@ -501,11 +508,6 @@
             }
         }
 
-        function resetPortal() {
-            selectedSchool = null;
-            selectedTemplate = null;
-            updateUI();
-        }
 
         window.activateLicense = async function () {
             if (!selectedSchool || !(await verifyMasterPassword())) return;
@@ -566,8 +568,10 @@
         }
 
         function resetPortal() {
-            document.getElementById('activationPassword').value = '';
+            const pwd = document.getElementById('activationPassword');
+            if (pwd) pwd.value = '';
             selectedSchool = null;
+            selectedTemplate = null;
             updateUI();
         }
 
