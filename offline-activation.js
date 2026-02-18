@@ -7,8 +7,10 @@ let offlineTokenData = null;
 const BASE_KEY_STRING = "SBAProMasterSecretKey2023!@#$%^&*()";
 const BASE_IV_STRING = "SBAProIV20231234!";
 
-const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:3000/api'
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const isGitHubPages = window.location.hostname.includes('github.io');
+const API_BASE_URL = isLocal || isGitHubPages
+    ? 'https://approvesba.vercel.app/api'
     : '/api';
 
 // Product Versions (matching C# enum)

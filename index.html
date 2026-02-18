@@ -11,8 +11,10 @@
         import { initializeFirestore, collection, getDocs, doc, setDoc, getDoc, deleteDoc, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
         // Global variables
-        const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-            ? 'http://localhost:3000/api'
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const isGitHubPages = window.location.hostname.includes('github.io');
+        const API_BASE_URL = isLocal || isGitHubPages
+            ? 'https://approvesba.vercel.app/api'
             : '/api';
 
         let FIREBASE_CONFIGS = {};
