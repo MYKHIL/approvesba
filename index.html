@@ -11,6 +11,7 @@
         import { initializeFirestore, collection, getDocs, doc, setDoc, getDoc, deleteDoc, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
         // Global variables
+        const SYSTEM_ACTIVATION_HASH = "c93a215026f36ac783bcac8ba5e4bbea1c3cdb6c79d3824f9712143c44dbb0f3";
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const isGitHubPages = window.location.hostname.includes('github.io');
         const API_BASE_URL = isLocal || isGitHubPages
@@ -18,7 +19,7 @@
             : '/api';
 
         let FIREBASE_CONFIGS = {};
-        let ACTIVATION_HASH = '';
+        let ACTIVATION_HASH = SYSTEM_ACTIVATION_HASH; // Use system constant
         const dbs = {};
         const apps = {};
         let schools = [];
@@ -405,21 +406,24 @@
                     maxStudents: t.maxStudents,
                     maxClass: t.maxClass,
                     expiryDate: Timestamp.fromDate(date),
-                    activationHash: ACTIVATION_HASH,
+                    activationHash: SYSTEM_ACTIVATION_HASH,
                     lastActivated: Timestamp.now()
                 };
 
                 // Write Subscription (One per base name)
+                console.log(`[Firestore] Writing Subscription for ${selectedSchool.baseName}:`, sub);
                 await setDoc(doc(dbs[selectedSchool.dbIndex], 'subscriptions', selectedSchool.baseName), sub);
 
                 // BATCH UPDATE ACCESS FOR ALL VARIANTS
                 const variants = schools.filter(s => s.baseName === selectedSchool.baseName);
                 const updates = variants.map(variant => {
                     const schoolRef = doc(dbs[variant.dbIndex], 'schools', variant.id);
-                    return setDoc(schoolRef, {
+                    const payload = {
                         Access: true,
-                        activationHash: ACTIVATION_HASH
-                    }, { merge: true });
+                        activationHash: SYSTEM_ACTIVATION_HASH
+                    };
+                    console.log(`[Firestore] Updating School ${variant.id} (Access: true):`, payload);
+                    return setDoc(schoolRef, payload, { merge: true });
                 });
 
                 await Promise.all(updates);
@@ -544,21 +548,24 @@
                     maxStudents: s,
                     maxClass: c,
                     expiryDate: Timestamp.fromDate(date),
-                    activationHash: ACTIVATION_HASH,
+                    activationHash: SYSTEM_ACTIVATION_HASH,
                     lastActivated: Timestamp.now()
                 };
 
                 // Write Subscription
+                console.log(`[Firestore] Writing Manual Subscription for ${selectedSchool.baseName}:`, sub);
                 await setDoc(doc(dbs[selectedSchool.dbIndex], 'subscriptions', selectedSchool.baseName), sub);
 
                 // BATCH UPDATE ACCESS FOR ALL VARIANTS
                 const variants = schools.filter(s => s.baseName === selectedSchool.baseName);
                 const updates = variants.map(variant => {
                     const schoolRef = doc(dbs[variant.dbIndex], 'schools', variant.id);
-                    return setDoc(schoolRef, {
+                    const payload = {
                         Access: true,
-                        activationHash: ACTIVATION_HASH
-                    }, { merge: true });
+                        activationHash: SYSTEM_ACTIVATION_HASH
+                    };
+                    console.log(`[Firestore] Updating School ${variant.id} (Manual Unlock):`, payload);
+                    return setDoc(schoolRef, payload, { merge: true });
                 });
 
                 await Promise.all(updates);
