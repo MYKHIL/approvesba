@@ -461,35 +461,65 @@
 
             showLoadingOverlay('Starting Migration...', true);
             try {
-                // 1. Fetch Subscription
+                console.log(`[Migration] STARTING for ${baseName} from DB ${selectedSchool.dbIndex} to DB ${targetDbIndex}`);
+
+                // 1. Fetch & Write Subscription
                 showLoadingOverlay(`Migrating Subscription: ${baseName}...`, true);
                 const subDoc = await getDoc(doc(sourceDb, 'subscriptions', baseName));
                 if (subDoc.exists()) {
-                    await setDoc(doc(targetDb, 'subscriptions', baseName), subDoc.data());
+                    const subData = { ...subDoc.data(), activationHash: SYSTEM_ACTIVATION_HASH };
+                    console.log(`[Migration] Writing Subscription to Target DB:`, subData);
+                    await setDoc(doc(targetDb, 'subscriptions', baseName), subData);
+
+                    // Delay to allow indexing/propagation for security rules
+                    console.log(`[Migration] Waiting for subscription propagation (1s)...`);
+                    await new Promise(r => setTimeout(r, 1000));
+                } else {
+                    console.warn(`[Migration] No subscription found for ${baseName}. Migration might fail due to security rules.`);
                 }
 
                 // 2. Fetch all variants from CURRENT source list
                 const variants = schools.filter(s => s.baseName === baseName && s.dbIndex === selectedSchool.dbIndex);
+                console.log(`[Migration] Found ${variants.length} content variants to move.`);
                 let count = 0;
 
                 for (const variant of variants) {
                     count++;
+                    console.log(`[Migration] Processing Variant ${count}/${variants.length}: ${variant.id}`);
                     showLoadingOverlay(`Migrating Variant ${count}/${variants.length}: ${variant.id}...`, true);
 
                     // A. Migrate School Document
-                    const schoolData = { ...variant.data, migratedFrom: selectedSchool.dbIndex };
+                    const schoolData = {
+                        ...variant.data,
+                        migratedFrom: selectedSchool.dbIndex,
+                        activationHash: SYSTEM_ACTIVATION_HASH,
+                        Access: true
+                    };
+                    console.log(`[Migration] Writing School Document: ${variant.id}`);
                     await setDoc(doc(targetDb, 'schools', variant.id), schoolData);
 
                     // B. Migrate Subcollections (Recursively)
-                    const subcollections = ['students', 'classes', 'terms', 'attendance', 'reports'];
+                    const subcollections = [
+                        'students', 'classes', 'subjects', 'assessments',
+                        'score_buckets', 'scores', 'attendance', 'reports',
+                        'analytics', 'userLogs', 'activeSessions', 'metadata',
+                        'terms', 'config', 'settings'
+                    ];
+
                     for (const sub of subcollections) {
-                        const sourceCol = collection(sourceDb, 'schools', variant.id, sub);
-                        const snapshot = await getDocs(sourceCol);
-                        if (!snapshot.empty) {
-                            showLoadingOverlay(`Migrating ${sub} for ${variant.id} (${snapshot.size} docs)...`, true);
-                            for (const d of snapshot.docs) {
-                                await setDoc(doc(targetDb, 'schools', variant.id, sub, d.id), d.data());
+                        try {
+                            const sourceCol = collection(sourceDb, 'schools', variant.id, sub);
+                            const snapshot = await getDocs(sourceCol);
+                            if (!snapshot.empty) {
+                                console.log(`[Migration] Moving Subcollection: ${sub} (${snapshot.size} documents)`);
+                                showLoadingOverlay(`Moving ${sub} (${snapshot.size} docs)...`, true);
+
+                                for (const d of snapshot.docs) {
+                                    await setDoc(doc(targetDb, 'schools', variant.id, sub, d.id), d.data());
+                                }
                             }
+                        } catch (subErr) {
+                            console.error(`[Migration] Failed to migrate subcollection ${sub}:`, subErr);
                         }
                     }
                 }
@@ -499,12 +529,24 @@
                 // Cleanup Option
                 if (confirm(`Do you want to DELETE "${baseName}" from the SOURCE Database ${selectedSchool.dbIndex} now?\n\nOnly do this if you have verified the migration and updated the Vercel mapping.`)) {
                     showLoadingOverlay(`Deleting from Source DB ${selectedSchool.dbIndex}...`, true);
+                    console.log(`[Migration] DELETING data from Source DB ${selectedSchool.dbIndex}`);
+
                     for (const variant of variants) {
-                        const subcollections = ['students', 'classes', 'terms', 'attendance', 'reports'];
+                        const subcollections = [
+                            'students', 'classes', 'subjects', 'assessments',
+                            'score_buckets', 'scores', 'attendance', 'reports',
+                            'analytics', 'userLogs', 'activeSessions', 'metadata',
+                            'terms', 'config', 'settings'
+                        ];
+
                         for (const sub of subcollections) {
-                            const snapshot = await getDocs(collection(sourceDb, 'schools', variant.id, sub));
-                            for (const d of snapshot.docs) {
-                                await deleteDoc(doc(sourceDb, 'schools', variant.id, sub, d.id));
+                            try {
+                                const snapshot = await getDocs(collection(sourceDb, 'schools', variant.id, sub));
+                                for (const d of snapshot.docs) {
+                                    await deleteDoc(doc(sourceDb, 'schools', variant.id, sub, d.id));
+                                }
+                            } catch (delErr) {
+                                console.warn(`[Migration] Could not delete subcollection ${sub}:`, delErr);
                             }
                         }
                         await deleteDoc(doc(sourceDb, 'schools', variant.id));
