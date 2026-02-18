@@ -479,14 +479,29 @@
                 }
 
                 // 2. Fetch all variants from CURRENT source list
+                // 3. Migrate Variants
                 const variants = schools.filter(s => s.baseName === baseName && s.dbIndex === selectedSchool.dbIndex);
                 console.log(`[Migration] Found ${variants.length} content variants to move.`);
                 let count = 0;
 
+                // Diagnostics for progress
+                let completedUnits = 0;
+                const OTHER_SUBCOLS = ['attendance', 'reports', 'analytics', 'userLogs', 'activeSessions', 'metadata', 'terms', 'config', 'settings'];
+                const unitsPerVariant = 1 /*main school doc*/ + 1 /*metadata bundle*/ + 1 /*students*/ + 1 /*scores*/ + OTHER_SUBCOLS.length;
+                const totalUnits = (variants.length * unitsPerVariant) + 1 /*subscription*/;
+
+                const updateMigrateProgress = (msg) => {
+                    const percent = Math.round((completedUnits / totalUnits) * 100);
+                    showLoadingOverlay(`${msg} (${percent}%)`, true);
+                };
+
+                // Increment for subscription already done
+                completedUnits++;
+
                 for (const variant of variants) {
                     count++;
                     console.log(`[Migration] Processing Variant ${count}/${variants.length}: ${variant.id}`);
-                    showLoadingOverlay(`Migrating Variant ${count}/${variants.length}: ${variant.id}...`, true);
+                    updateMigrateProgress(`Migrating ${variant.id}...`);
 
                     // A. Migrate School Document
                     const schoolData = {
@@ -495,73 +510,54 @@
                         activationHash: SYSTEM_ACTIVATION_HASH,
                         Access: true
                     };
-                    console.log(`[Migration] Writing School Document: ${variant.id}`);
                     await setDoc(doc(targetDb, 'schools', variant.id), schoolData);
+                    completedUnits++;
+                    updateMigrateProgress(`Writing ${variant.id}...`);
 
-                    // B. BUCKETIZED MIGRATION (Optimization Layer)
+                    // B. BUCKETIZED MIGRATION
 
-                    // 1. Metadata Bundle (Classes, Subjects, Assessments)
+                    // 1. Metadata Bundle
                     try {
-                        console.log(`[Migration] Bundling Metadata (Classes, Subjects, Assessments)...`);
                         const [classes, subjects, assessments] = await Promise.all([
                             getDocs(collection(sourceDb, 'schools', variant.id, 'classes')),
                             getDocs(collection(sourceDb, 'schools', variant.id, 'subjects')),
                             getDocs(collection(sourceDb, 'schools', variant.id, 'assessments'))
                         ]);
-
                         const bundle = {
                             classes: classes.docs.map(d => d.data()),
                             subjects: subjects.docs.map(d => d.data()),
                             assessments: assessments.docs.map(d => d.data()),
                             lastUpdated: Timestamp.now()
                         };
-
                         await setDoc(doc(targetDb, 'schools', variant.id, 'config', 'metadata_bundle'), bundle);
-                        console.log(`[Migration] Metadata Bundle created for ${variant.id}`);
-                    } catch (e) {
-                        console.error(`[Migration] Metadata bundling failed for ${variant.id}:`, e);
-                    }
+                    } catch (e) { console.error(`[Migration] Bundle failed:`, e); }
+                    completedUnits++;
+                    updateMigrateProgress(`Bundling metadata...`);
 
-                    // 2. Student Bucketing (Chunks of 10,000)
+                    // 2. Student Bucketing
                     try {
-                        console.log(`[Migration] Fetching students for bucketing...`);
                         const studentSnap = await getDocs(collection(sourceDb, 'schools', variant.id, 'students'));
                         const students = studentSnap.docs.map(d => d.data());
-
                         if (students.length > 0) {
                             const CHUNK_SIZE = 10000;
                             const totalChunks = Math.ceil(students.length / CHUNK_SIZE);
-
-                            // Write Manifest
                             await setDoc(doc(targetDb, 'schools', variant.id, 'config', 'student_bucket_manifest'), {
-                                totalChunks,
-                                totalStudents: students.length,
-                                chunkSize: CHUNK_SIZE,
-                                lastUpdated: Timestamp.now()
+                                totalChunks, totalStudents: students.length, chunkSize: CHUNK_SIZE, lastUpdated: Timestamp.now()
                             });
-
-                            // Write Chunks
                             for (let i = 0; i < totalChunks; i++) {
-                                const chunk = students.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-                                await setDoc(doc(targetDb, 'schools', variant.id, 'config', `student_bucket_${i}`), { students: chunk });
+                                await setDoc(doc(targetDb, 'schools', variant.id, 'config', `student_bucket_${i}`), { students: students.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE) });
                             }
-                            console.log(`[Migration] ${students.length} students bucketed into ${totalChunks} chunks.`);
                         }
-                    } catch (e) {
-                        console.error(`[Migration] Student bucketing failed for ${variant.id}:`, e);
-                    }
+                    } catch (e) { console.error(`[Migration] Students failed:`, e); }
+                    completedUnits++;
+                    updateMigrateProgress(`Bucketing students...`);
 
-                    // 3. Score Bucketing (By Subject)
+                    // 3. Score Bucketing
                     try {
-                        console.log(`[Migration] Fetching scores for bucketing...`);
-                        // Also try to fetch from existing score_buckets if present
                         const existingBuckets = await getDocs(collection(sourceDb, 'schools', variant.id, 'score_buckets'));
                         if (!existingBuckets.empty) {
-                            for (const b of existingBuckets.docs) {
-                                await setDoc(doc(targetDb, 'schools', variant.id, 'score_buckets', b.id), b.data());
-                            }
+                            for (const b of existingBuckets.docs) await setDoc(doc(targetDb, 'schools', variant.id, 'score_buckets', b.id), b.data());
                         }
-
                         const scoreSnap = await getDocs(collection(sourceDb, 'schools', variant.id, 'scores'));
                         if (!scoreSnap.empty) {
                             const scores = scoreSnap.docs.map(d => d.data());
@@ -570,39 +566,27 @@
                                 if (!subjectBuckets[s.subjectId]) subjectBuckets[s.subjectId] = {};
                                 subjectBuckets[s.subjectId][s.id] = s;
                             });
-
                             for (const [subId, map] of Object.entries(subjectBuckets)) {
                                 await setDoc(doc(targetDb, 'schools', variant.id, 'score_buckets', `subject_${subId}`), { scoresMap: map }, { merge: true });
                             }
-                            console.log(`[Migration] Scores bucketed by subject for ${variant.id}`);
                         }
-                    } catch (e) {
-                        console.error(`[Migration] Score bucketing failed for ${variant.id}:`, e);
-                    }
+                    } catch (e) { console.error(`[Migration] Scores failed:`, e); }
+                    completedUnits++;
+                    updateMigrateProgress(`Bucketing scores...`);
 
-                    // C. General Subcollections (Non-Bucketized)
-                    const subcollections = [
-                        'attendance', 'reports', 'analytics', 'userLogs',
-                        'activeSessions', 'metadata', 'terms', 'config', 'settings'
-                    ];
-
-                    for (const sub of subcollections) {
+                    // C. General Subcollections
+                    for (const sub of OTHER_SUBCOLS) {
                         try {
-                            const sourceCol = collection(sourceDb, 'schools', variant.id, sub);
-                            const snapshot = await getDocs(sourceCol);
+                            const snapshot = await getDocs(collection(sourceDb, 'schools', variant.id, sub));
                             if (!snapshot.empty) {
-                                console.log(`[Migration] Moving Subcollection: ${sub} (${snapshot.size} documents)`);
-                                showLoadingOverlay(`Moving ${sub} (${snapshot.size} docs)...`, true);
-
                                 for (const d of snapshot.docs) {
-                                    // Skip already bucketed docs if they were in subcollections
                                     if (sub === 'config' && (d.id.startsWith('student_bucket_') || d.id === 'student_bucket_manifest' || d.id === 'metadata_bundle')) continue;
                                     await setDoc(doc(targetDb, 'schools', variant.id, sub, d.id), d.data());
                                 }
                             }
-                        } catch (subErr) {
-                            console.error(`[Migration] Failed to migrate subcollection ${sub}:`, subErr);
-                        }
+                        } catch (subErr) { console.error(`[Migration] ${sub} failed:`, subErr); }
+                        completedUnits++;
+                        updateMigrateProgress(`Moving ${sub}...`);
                     }
                 }
 
