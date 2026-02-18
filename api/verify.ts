@@ -30,9 +30,14 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
         const targetHash = process.env.PASSWORD_HASH;
 
+        console.log('[Auth] Received Hash:', password);
+        console.log('[Auth] Target Hash:', targetHash ? `${targetHash.substring(0, 8)}...` : 'MISSING');
+
         if (password === targetHash) {
+            console.log('[Auth] Verification Success');
             return res.status(200).json({ success: true, hash: password });
         } else {
+            console.log('[Auth] Verification Failed (Mismatch)');
             return res.status(401).json({ success: false, message: 'Invalid password' });
         }
     } catch (error: any) {
