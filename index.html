@@ -105,9 +105,12 @@
                 console.log('[Auth] Server Response Status:', response.status);
 
                 if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Login Verification Error:', response.status, errorText);
-                    alert(`API Error (${response.status}): Could not verify password. Make sure the local server is running.`);
+                    const result = await response.json();
+                    console.error('[Auth] Verification Failed:', response.status, result);
+                    if (result.debug) {
+                        console.log('[Auth] Debug Info:', result.debug);
+                    }
+                    alert(`Incorrect portal password. Error ${response.status}`);
                     return;
                 }
 
