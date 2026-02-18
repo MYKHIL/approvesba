@@ -8,35 +8,56 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-        import { initializeFirestore, collection, getDocs, doc, setDoc, getDoc, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { initializeFirestore, collection, getDocs, doc, setDoc, getDoc, deleteDoc, Timestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
-        // Firebase Configurations
-        const FIREBASE_CONFIGS = {
-            1: {
-                apiKey: "AIzaSyCe0O-mBCODiEA-KNVLXLMp00lJ6_Jt5SU",
-                authDomain: "sba-pro-master-759f6.firebaseapp.com",
-                projectId: "sba-pro-master-759f6",
-                storageBucket: "sba-pro-master-759f6.firebasestorage.app",
-                messagingSenderId: "239073604626",
-                appId: "1:239073604626:web:452bc2719fc980704d14cb"
-            },
-            2: {
-                apiKey: "AIzaSyBP6gLbFLhfbAvjB2ddXSq6zqE_gWK2MEI",
-                authDomain: "sba-pro-master-40f08.firebaseapp.com",
-                projectId: "sba-pro-master-40f08",
-                storageBucket: "sba-pro-master-40f08.firebasestorage.app",
-                messagingSenderId: "91692962474",
-                appId: "1:91692962474:web:eefa6a3a04ba557c38b6d3"
-            },
-            3: {
-                apiKey: "AIzaSyBnbpBSwA-AtorGzVefj5h3fWkAVfyDWuU",
-                authDomain: "sba-pro-master-e43d0.firebaseapp.com",
-                projectId: "sba-pro-master-e43d0",
-                storageBucket: "sba-pro-master-e43d0.firebasestorage.app",
-                messagingSenderId: "126627036834",
-                appId: "1:126627036834:web:4e32313e40e5c3f752a1fb"
+        // Global variables
+        const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:3000/api'
+            : '/api';
+
+        let FIREBASE_CONFIGS = {};
+        let ACTIVATION_HASH = '';
+        const dbs = {};
+        const apps = {};
+        let schools = [];
+        let selectedSchool = null;
+        let selectedTemplate = null;
+
+        /**
+         * Dynamic Bootstrap: Fetch configuration and initialize Firebase
+         */
+        async function loadBootstrapData() {
+            showLoadingOverlay('Initializing Portal...', true);
+            try {
+                const response = await fetch(`${API_BASE_URL}/firebase-config`);
+                if (!response.ok) throw new Error('Failed to load portal configuration');
+
+                const data = await response.json();
+                FIREBASE_CONFIGS = data.configs || {};
+                ACTIVATION_HASH = data.activationHash || '';
+
+                // Initialize Firestore instances dynamically
+                Object.entries(FIREBASE_CONFIGS).forEach(([idx, config]) => {
+                    const app = initializeApp(config, `db${idx}`);
+                    apps[idx] = app;
+                    dbs[idx] = initializeFirestore(app, {
+                        experimentalForceLongPolling: true
+                    });
+                });
+
+                console.log(`[Portal] Successfully initialized with ${Object.keys(dbs).length} databases.`);
+
+                // If already logged in, fetch schools
+                if (sessionStorage.getItem('portal_access') === 'true') {
+                    await fetchAllSchools();
+                }
+            } catch (error) {
+                console.error('[Bootstrap Error]', error);
+                alert('CRITICAL: Failed to load portal configuration. Please check your connection or server status.');
+            } finally {
+                showLoadingOverlay('', false);
             }
-        };
+        }
 
         // License Templates
         const LICENSE_TEMPLATES = [
@@ -49,20 +70,7 @@
             { name: 'Custom', maxStudents: 0, maxClass: 0, months: 12, price: 'Contact Sales' }
         ];
 
-        let schools = [];
-        let selectedSchool = null;
-        let selectedTemplate = null;
 
-        // Initialize Firebase apps
-        const apps = {};
-        const dbs = {};
-        Object.entries(FIREBASE_CONFIGS).forEach(([idx, config]) => {
-            const app = initializeApp(config, `db${idx}`);
-            apps[idx] = app;
-            dbs[idx] = initializeFirestore(app, {
-                experimentalForceLongPolling: true
-            });
-        });
 
         async function hashPassword(password) {
             const encoder = new TextEncoder();
@@ -81,15 +89,27 @@
                 return;
             }
 
-            const hash = await hashPassword(password);
-            if (hash === 'c93a215026f36ac783bcac8ba5e4bbea1c3cdb6c79d3824f9712143c44dbb0f3') {
-                document.getElementById('loginGate').classList.add('hidden');
-                document.getElementById('mainContent').classList.remove('hidden');
-                document.getElementById('searchContainer').classList.remove('hidden');
-                sessionStorage.setItem('portal_access', 'true');
-                await fetchAllSchools();
-            } else {
-                alert('Incorrect portal password');
+            try {
+                const response = await fetch(`${API_BASE_URL}/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    document.getElementById('loginGate').classList.add('hidden');
+                    document.getElementById('mainContent').classList.remove('hidden');
+                    document.getElementById('searchContainer').classList.remove('hidden');
+                    sessionStorage.setItem('portal_access', 'true');
+                    await fetchAllSchools();
+                } else {
+                    alert(result.message || 'Incorrect portal password');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('Failed to verify password. Please try again.');
             }
         }
 
@@ -100,16 +120,29 @@
                 showMessage('❌ Activation Master Password is required!', 'error');
                 return false;
             }
-            const hash = await hashPassword(password);
-            if (hash !== 'c93a215026f36ac783bcac8ba5e4bbea1c3cdb6c79d3824f9712143c44dbb0f3') {
-                showMessage('❌ Invalid Activation Master Password!', 'error');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+
+                const result = await response.json();
+                if (!result.success) {
+                    showMessage(`❌ ${result.message || 'Invalid Activation Master Password!'}`, 'error');
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                console.error('Verification error:', error);
+                showMessage('❌ Verification failed. Please try again.', 'error');
                 return false;
             }
-            return true;
         }
 
         async function fetchAllSchools() {
-            showLoading(true);
+            showLoadingOverlay('Fetching Schools...', true);
             schools = [];
             const schoolList = document.getElementById('schoolList');
             schoolList.innerHTML = '<div class="text-center text-gray-500 py-4">Loading schools...</div>';
@@ -267,17 +300,29 @@
         function updateUI() {
             const el = document.getElementById('selectedSchool');
             const form = document.getElementById('licenseForm');
+            const migrate = document.getElementById('migrationPanel');
+            const targetSelect = document.getElementById('targetDbSelect');
+
             if (selectedSchool) {
                 el.innerHTML = `
                     <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
                         <p class="text-xs text-blue-600 font-bold uppercase mb-1">Target School</p>
                         <p class="font-bold text-lg text-gray-900">${selectedSchool.name}</p>
-                        <p class="text-xs text-gray-500">DB: ${selectedSchool.dbIndex} | ID: ${selectedSchool.id}</p>
+                        <p class="text-xs text-gray-500">Source DB: ${selectedSchool.dbIndex} | ID: ${selectedSchool.id}</p>
                     </div>`;
                 form.classList.remove('hidden');
+                migrate.classList.remove('hidden');
+
+                // Populate Target DB Select
+                targetSelect.innerHTML = '<option value="">Select Destination...</option>' +
+                    Object.keys(dbs).filter(idx => parseInt(idx) !== selectedSchool.dbIndex)
+                        .map(idx => `<option value="${idx}">Database ${idx} (${FIREBASE_CONFIGS[idx].projectId})</option>`)
+                        .join('');
+
             } else {
                 el.innerHTML = '<p class="text-gray-400 text-center py-4 italic">Select a school from the left to begin</p>';
                 form.classList.add('hidden');
+                migrate.classList.add('hidden');
             }
         }
 
@@ -331,7 +376,7 @@
             const msg = `Quick Activate ${t.name} for ${selectedSchool.name}?\n\nStudents: ${t.maxStudents}\nClasses: ${t.maxClass}\nDuration: ${t.months}mo\n\nApplies to ALL variations of "${selectedSchool.baseName}"`;
             if (!confirm(msg)) return;
 
-            showLoading(true);
+            showLoadingOverlay('Activating...', true);
             try {
                 const date = new Date();
                 if (t.months) date.setMonth(date.getMonth() + t.months);
@@ -341,7 +386,7 @@
                     maxStudents: t.maxStudents,
                     maxClass: t.maxClass,
                     expiryDate: Timestamp.fromDate(date),
-                    activationHash: await hashPassword(document.getElementById('activationPassword').value),
+                    activationHash: ACTIVATION_HASH,
                     lastActivated: Timestamp.now()
                 };
 
@@ -352,7 +397,10 @@
                 const variants = schools.filter(s => s.baseName === selectedSchool.baseName);
                 const updates = variants.map(variant => {
                     const schoolRef = doc(dbs[variant.dbIndex], 'schools', variant.id);
-                    return setDoc(schoolRef, { Access: true }, { merge: true });
+                    return setDoc(schoolRef, {
+                        Access: true,
+                        activationHash: ACTIVATION_HASH
+                    }, { merge: true });
                 });
 
                 await Promise.all(updates);
@@ -369,8 +417,94 @@
                 console.error(e);
                 showMessage('❌ Activation failed', 'error');
             } finally {
-                showLoading(false);
+                showLoadingOverlay('', false);
             }
+        }
+
+        window.migrateSchool = async function () {
+            if (!selectedSchool || !(await verifyMasterPassword())) return;
+            const targetDbIndex = parseInt(document.getElementById('targetDbSelect').value);
+            if (!targetDbIndex || targetDbIndex === selectedSchool.dbIndex) {
+                alert('Please select a different target database.');
+                return;
+            }
+
+            const baseName = selectedSchool.baseName;
+            const sourceDb = dbs[selectedSchool.dbIndex];
+            const targetDb = dbs[targetDbIndex];
+
+            const msg = `MIGRATE all data for "${baseName}" from DB ${selectedSchool.dbIndex} to DB ${targetDbIndex}?\n\nThis will copy:\n- All school variants (years/terms)\n- All students and classes\n- Subscription data\n\nExisting data in the target database for this school will be OVERWRITTEN.`;
+            if (!confirm(msg)) return;
+
+            showLoadingOverlay('Starting Migration...', true);
+            try {
+                // 1. Fetch Subscription
+                showLoadingOverlay(`Migrating Subscription: ${baseName}...`, true);
+                const subDoc = await getDoc(doc(sourceDb, 'subscriptions', baseName));
+                if (subDoc.exists()) {
+                    await setDoc(doc(targetDb, 'subscriptions', baseName), subDoc.data());
+                }
+
+                // 2. Fetch all variants from CURRENT source list
+                const variants = schools.filter(s => s.baseName === baseName && s.dbIndex === selectedSchool.dbIndex);
+                let count = 0;
+
+                for (const variant of variants) {
+                    count++;
+                    showLoadingOverlay(`Migrating Variant ${count}/${variants.length}: ${variant.id}...`, true);
+
+                    // A. Migrate School Document
+                    const schoolData = { ...variant.data, migratedFrom: selectedSchool.dbIndex };
+                    await setDoc(doc(targetDb, 'schools', variant.id), schoolData);
+
+                    // B. Migrate Subcollections (Recursively)
+                    const subcollections = ['students', 'classes', 'terms', 'attendance', 'reports'];
+                    for (const sub of subcollections) {
+                        const sourceCol = collection(sourceDb, 'schools', variant.id, sub);
+                        const snapshot = await getDocs(sourceCol);
+                        if (!snapshot.empty) {
+                            showLoadingOverlay(`Migrating ${sub} for ${variant.id} (${snapshot.size} docs)...`, true);
+                            for (const d of snapshot.docs) {
+                                await setDoc(doc(targetDb, 'schools', variant.id, sub, d.id), d.data());
+                            }
+                        }
+                    }
+                }
+
+                alert(`✅ Migration Complete!\n\n${variants.length} school variants moved to DB ${targetDbIndex}.\n\nIMPORTANT: Remember to update the SCHOOL_DATABASE_MAPPING in Vercel to point "${baseName}" to Database ${targetDbIndex}.`);
+
+                // Cleanup Option
+                if (confirm(`Do you want to DELETE "${baseName}" from the SOURCE Database ${selectedSchool.dbIndex} now?\n\nOnly do this if you have verified the migration and updated the Vercel mapping.`)) {
+                    showLoadingOverlay(`Deleting from Source DB ${selectedSchool.dbIndex}...`, true);
+                    for (const variant of variants) {
+                        const subcollections = ['students', 'classes', 'terms', 'attendance', 'reports'];
+                        for (const sub of subcollections) {
+                            const snapshot = await getDocs(collection(sourceDb, 'schools', variant.id, sub));
+                            for (const d of snapshot.docs) {
+                                await deleteDoc(doc(sourceDb, 'schools', variant.id, sub, d.id));
+                            }
+                        }
+                        await deleteDoc(doc(sourceDb, 'schools', variant.id));
+                    }
+                    await deleteDoc(doc(sourceDb, 'subscriptions', baseName));
+                    alert('✅ Data deleted from source database.');
+                }
+
+                // Refresh to show changes
+                await fetchAllSchools();
+                resetPortal();
+            } catch (e) {
+                console.error('Migration failed:', e);
+                alert(`❌ Migration failed: ${e.message}`);
+            } finally {
+                showLoadingOverlay('', false);
+            }
+        }
+
+        function resetPortal() {
+            selectedSchool = null;
+            selectedTemplate = null;
+            updateUI();
         }
 
         window.activateLicense = async function () {
@@ -383,7 +517,7 @@
             if (!s || !c || !val) { showMessage('Please fill all fields', 'error'); return; }
             if (!confirm(`Activate manual license for ${selectedSchool.name} (All Variations)?`)) return;
 
-            showLoading(true);
+            showLoadingOverlay('Activating...', true);
             try {
                 // Calculate Expiry Date (From TODAY)
                 const date = new Date();
@@ -396,7 +530,7 @@
                     maxStudents: s,
                     maxClass: c,
                     expiryDate: Timestamp.fromDate(date),
-                    activationHash: await hashPassword(document.getElementById('activationPassword').value),
+                    activationHash: ACTIVATION_HASH,
                     lastActivated: Timestamp.now()
                 };
 
@@ -407,7 +541,10 @@
                 const variants = schools.filter(s => s.baseName === selectedSchool.baseName);
                 const updates = variants.map(variant => {
                     const schoolRef = doc(dbs[variant.dbIndex], 'schools', variant.id);
-                    return setDoc(schoolRef, { Access: true }, { merge: true });
+                    return setDoc(schoolRef, {
+                        Access: true,
+                        activationHash: ACTIVATION_HASH
+                    }, { merge: true });
                 });
 
                 await Promise.all(updates);
@@ -424,7 +561,7 @@
                 console.error(e);
                 showMessage('❌ Activation failed', 'error');
             } finally {
-                showLoading(false);
+                showLoadingOverlay('', false);
             }
         }
 
@@ -442,15 +579,14 @@
             setTimeout(() => el.classList.add('hidden'), 4000);
         }
 
-        function showLoading(s) { document.getElementById('loadingOverlay').classList.toggle('hidden', !s); }
+        window.showLoadingOverlay = function (text, s) {
+            const el = document.getElementById('loadingText');
+            if (el) el.textContent = text || 'Writing to Cloud...';
+            document.getElementById('loadingOverlay').classList.toggle('hidden', !s);
+        }
 
         window.addEventListener('DOMContentLoaded', () => {
-            if (sessionStorage.getItem('portal_access') === 'true') {
-                document.getElementById('loginGate').classList.add('hidden');
-                document.getElementById('mainContent').classList.remove('hidden');
-                document.getElementById('searchContainer').classList.remove('hidden');
-                fetchAllSchools();
-            }
+            loadBootstrapData();
             document.getElementById('searchInput').addEventListener('input', (e) => renderSchools(e.target.value));
             document.getElementById('durationValue').addEventListener('input', updateExpectedExpiry);
             document.getElementById('durationUnit').addEventListener('change', updateExpectedExpiry);
@@ -465,7 +601,7 @@
         class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-[100]">
         <div class="bg-white rounded-2xl p-8 flex flex-col items-center shadow-2xl">
             <div class="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent mb-4"></div>
-            <p class="font-bold text-gray-700">Writing to Cloud...</p>
+            <p id="loadingText" class="font-bold text-gray-700">Writing to Cloud...</p>
         </div>
     </div>
 
@@ -637,6 +773,57 @@
                             <button onclick="activateLicense()"
                                 class="w-full py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-xl hover:shadow-blue-500/40 text-lg uppercase tracking-widest">
                                 Confirm Activation
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Migration Panel -->
+                    <div id="migrationPanel"
+                        class="hidden bg-white rounded-3xl shadow-xl border border-gray-100 p-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div
+                                class="w-10 h-10 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center shadow-inner">
+                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" stroke-width="2"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                            </div>
+                            <h2 class="text-3xl font-black tracking-tight">Database Migration</h2>
+                        </div>
+
+                        <p class="text-sm text-gray-500 mb-8 font-medium">Move this school and all associated data to a
+                            different database.</p>
+
+                        <div class="space-y-6">
+                            <div class="bg-gray-50 p-6 rounded-2xl border-2 border-transparent">
+                                <label class="text-xs font-black uppercase text-gray-400 ml-1">Target Database</label>
+                                <div class="relative mt-2">
+                                    <select id="targetDbSelect"
+                                        class="w-full px-5 py-4 bg-white rounded-2xl border-2 border-gray-100 focus:border-amber-500 outline-none font-bold appearance-none cursor-pointer shadow-sm">
+                                        <option value="">Select Destination...</option>
+                                        <!-- Will be populated via updateUI -->
+                                    </select>
+                                    <div class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                                        <svg class="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24"
+                                            stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-red-50 p-6 rounded-3xl border-2 border-red-100 shadow-highlight">
+                                <label class="block text-sm font-black text-red-800 mb-2 uppercase tracking-wider">⚠️
+                                    Critical Action</label>
+                                <p class="text-[11px] text-red-600 font-bold mb-4">Migration requires the Master
+                                    Password and will overwrite any existing data for this ID in the target database.
+                                </p>
+                            </div>
+
+                            <button onclick="migrateSchool()"
+                                class="w-full py-5 bg-amber-600 text-white font-black rounded-2xl hover:bg-amber-700 transition-all shadow-xl hover:shadow-amber-500/40 text-lg uppercase tracking-widest">
+                                Start Migration
                             </button>
                         </div>
                     </div>

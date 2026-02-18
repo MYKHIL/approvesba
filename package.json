@@ -1,0 +1,12 @@
+{
+    "name": "sba-web-approval",
+    "version": "1.0.0",
+    "description": "SBA License Management Portal",
+    "private": true,
+    "dependencies": {
+        "@vercel/node": "^3.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^18.0.0"
+    }
+}

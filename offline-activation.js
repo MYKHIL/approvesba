@@ -6,7 +6,10 @@ let offlineTokenData = null;
 // Crypto Constants
 const BASE_KEY_STRING = "SBAProMasterSecretKey2023!@#$%^&*()";
 const BASE_IV_STRING = "SBAProIV20231234!";
-const EXPECTED_PASSWORD_HASH = "c0fcbcff40806178bd99b94e9422d2b869bcd8d90dc8f1b91ed9f7201b34dbe3";
+
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3000/api'
+    : '/api';
 
 // Product Versions (matching C# enum)
 const PRODUCT_VERSIONS = ['Trial', 'Basic', 'Standard', 'Premium', 'Professional', 'Enterprise', 'Full'];
@@ -214,7 +217,8 @@ async function handleTokenFile(file) {
     }
 
     try {
-        document.getElementById('loadingOverlay').classList.remove('hidden');
+        if (window.showLoadingOverlay) window.showLoadingOverlay('Reading Token...', true);
+        else document.getElementById('loadingOverlay').classList.remove('hidden');
         const arrayBuffer = await file.arrayBuffer();
         const decrypted = await aesDecrypt(new Uint8Array(arrayBuffer));
 
@@ -306,10 +310,16 @@ async function generateOfflineLicense() {
     try {
         document.getElementById('loadingOverlay').classList.remove('hidden');
 
-        // Validate password
-        const passwordHash = await tripleSha256(password);
-        if (passwordHash !== EXPECTED_PASSWORD_HASH) {
-            alert('❌ Invalid master password!');
+        // Validate password via API
+        const response = await fetch(`${API_BASE_URL}/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
+
+        const result = await response.json();
+        if (!result.success) {
+            alert(`❌ ${result.message || 'Invalid master password!'}`);
             return;
         }
 

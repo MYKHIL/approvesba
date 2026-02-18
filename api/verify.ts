@@ -1,0 +1,43 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import * as crypto from 'crypto';
+
+/**
+ * Secure Verification Endpoint
+ */
+const allowCors = (fn: (req: VercelRequest, res: VercelResponse) => Promise<any>) => async (req: VercelRequest, res: VercelResponse) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') {
+        res.status(200).end();
+        return;
+    }
+    return await fn(req, res);
+};
+
+async function handler(req: VercelRequest, res: VercelResponse) {
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    try {
+        const { password } = req.body;
+        if (!password) {
+            return res.status(400).json({ success: false, message: 'Password required' });
+        }
+
+        const hash = crypto.createHash('sha256').update(password).digest('hex');
+        const targetHash = process.env.PASSWORD_HASH;
+
+        if (hash === targetHash) {
+            return res.status(200).json({ success: true, hash });
+        } else {
+            return res.status(401).json({ success: false, message: 'Invalid password' });
+        }
+    } catch (error: any) {
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+export default allowCors(handler);
