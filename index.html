@@ -332,6 +332,7 @@
                     </div>`;
                 form.classList.remove('hidden');
                 migrate.classList.remove('hidden');
+                document.getElementById('passwordContainer').classList.remove('hidden');
 
                 // Populate Target DB Select
                 targetSelect.innerHTML = '<option value="">Select Destination...</option>' +
@@ -343,6 +344,7 @@
                 el.innerHTML = '<p class="text-gray-400 text-center py-4 italic">Select a school from the left to begin</p>';
                 form.classList.add('hidden');
                 migrate.classList.add('hidden');
+                document.getElementById('passwordContainer').classList.add('hidden');
             }
         }
 
@@ -865,8 +867,19 @@
                 <div id="onlinePanel">
                     <div id="selectedSchool" class="bg-white rounded-3xl shadow-xl border border-gray-100 p-8">
                         <p class="text-gray-400 text-center py-4 italic font-medium">Select a school to configure
-                            license
-                        </p>
+                            license</p>
+                    </div>
+
+                    <div id="passwordContainer" class="hidden mt-6">
+                        <div class="bg-amber-50 p-6 rounded-3xl border-2 border-amber-100 shadow-highlight">
+                            <label class="block text-xs font-black text-amber-800 mb-2 uppercase tracking-widest">🔒
+                                Activation Master Password</label>
+                            <input id="activationPassword" type="password"
+                                class="w-full px-6 py-4 bg-white/90 border-2 border-amber-200 rounded-2xl focus:border-amber-500 outline-none font-black text-center text-xl placeholder:text-amber-300"
+                                placeholder="••••••••" />
+                            <p class="text-[10px] text-amber-600 font-bold mt-2 text-center uppercase tracking-tighter">
+                                Requires Master Authorization</p>
+                        </div>
                     </div>
 
                     <div id="licenseForm"
@@ -956,14 +969,6 @@
                             <div id="currentExpiryDisplay" class="hidden space-y-2"></div>
                             <div id="expectedExpiryDisplay" class="hidden space-y-2"></div>
 
-                            <div class="bg-amber-50 p-6 rounded-3xl border-2 border-amber-100 mt-6 shadow-highlight">
-                                <label class="block text-sm font-black text-amber-800 mb-3 uppercase tracking-wider">🔒
-                                    Activation Master Password</label>
-                                <input id="activationPassword" type="password"
-                                    class="w-full px-6 py-4 bg-white/80 border-2 border-amber-200 rounded-2xl focus:border-amber-500 outline-none font-bold text-center"
-                                    placeholder="Verify to activate" />
-                            </div>
-
                             <button onclick="activateLicense()"
                                 class="w-full py-5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-xl hover:shadow-blue-500/40 text-lg uppercase tracking-widest">
                                 Confirm Activation
@@ -1007,16 +1012,17 @@
                                 </div>
                             </div>
 
+
                             <div class="bg-red-50 p-6 rounded-3xl border-2 border-red-100 shadow-highlight">
                                 <label class="block text-sm font-black text-red-800 mb-2 uppercase tracking-wider">⚠️
                                     Critical Action</label>
-                                <p class="text-[11px] text-red-600 font-bold mb-4">Migration requires the Master
-                                    Password and will overwrite any existing data for this ID in the target database.
+                                <p class="text-[11px] text-red-600 font-bold">Migration will overwrite any existing data
+                                    for this ID in the target database.
                                 </p>
                             </div>
 
                             <button onclick="migrateSchool()"
-                                class="w-full min-h-[60px] py-4 px-2 bg-amber-600 text-white font-black rounded-2xl hover:bg-amber-700 transition-all shadow-xl text-lg uppercase tracking-widest leading-tight">
+                                class="w-full min-h-[85px] py-4 bg-amber-500 text-white font-black rounded-3xl hover:bg-amber-600 transition-all shadow-[0_15px_35px_rgba(245,158,11,0.4)] text-2xl uppercase tracking-[0.2em] transform active:scale-95 border-b-8 border-amber-700">
                                 Start Migration
                             </button>
                         </div>
