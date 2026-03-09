@@ -403,19 +403,28 @@
         window.quickActivate = async function (idx) {
             const t = LICENSE_TEMPLATES[idx];
             if (!selectedSchool || !(await verifyMasterPassword())) return;
-            const msg = `Quick Activate ${t.name} for ${selectedSchool.name}?\n\nStudents: ${t.maxStudents}\nClasses: ${t.maxClass}\nDuration: ${t.months}mo\n\nApplies to ALL variations of "${selectedSchool.baseName}"`;
+
+            let addTime = false;
+            const now = new Date();
+            if (selectedSchool.existingExpiry && selectedSchool.existingExpiry > now) {
+                addTime = confirm(`This school has an active subscription until ${selectedSchool.existingExpiry.toLocaleDateString()}.\n\nWould you like to ADD the new ${t.name} duration to the existing time?\n\n- Click OK (Yes) to add up.\n- Click Cancel (No) to start fresh from today.`);
+            }
+
+            const msg = `Quick Activate ${t.name} for ${selectedSchool.name} (All Variations)?\n\nStudents: ${t.maxStudents}\nClasses: ${t.maxClass}\nDuration: ${t.months}mo\nMode: ${addTime ? 'ACCUMULATE' : 'RESTART'}`;
             if (!confirm(msg)) return;
 
             showLoadingOverlay('Activating...', true);
             try {
-                const date = new Date();
-                if (t.months) date.setMonth(date.getMonth() + t.months);
-                else date.setDate(date.getDate() + (t.days || 7));
+                const baseDate = (addTime && selectedSchool.existingExpiry) ? selectedSchool.existingExpiry : new Date();
+                const expiryDate = new Date(baseDate.getTime());
+
+                if (t.months) expiryDate.setMonth(baseDate.getMonth() + t.months);
+                else expiryDate.setDate(baseDate.getDate() + (t.days || 7));
 
                 const sub = {
                     maxStudents: t.maxStudents,
                     maxClass: t.maxClass,
-                    expiryDate: Timestamp.fromDate(date),
+                    expiryDate: Timestamp.fromDate(expiryDate),
                     activationHash: SYSTEM_ACTIVATION_HASH,
                     lastActivated: Timestamp.now()
                 };
@@ -918,22 +927,44 @@
             const val = parseInt(document.getElementById('durationValue').value);
             const unit = document.getElementById('durationUnit').value;
 
-            if (!s || !c || !val) { showMessage('Please fill all fields', 'error'); return; }
-            if (!confirm(`Activate manual license for ${selectedSchool.name} (All Variations)?`)) return;
+            if (!s || !c || !val) {
+                await showConfirm({ title: 'Missing Info', message: 'Please fill all fields before activating.', hideCancel: true, variant: 'danger' });
+                return;
+            }
+
+            let addTime = false;
+            const now = new Date();
+            if (selectedSchool.existingExpiry && selectedSchool.existingExpiry > now) {
+                addTime = await showConfirm({
+                    title: 'Active Subscription Found',
+                    message: `This school has an active subscription until ${selectedSchool.existingExpiry.toLocaleDateString()}. Would you like to ADD the new duration to the existing time?`,
+                    confirmText: 'Accumulate Time',
+                    cancelText: 'Start Fresh',
+                    variant: 'info'
+                });
+            }
+
+            if (!await showConfirm({
+                title: 'Confirm Manual License',
+                message: `Activate manual license for ${selectedSchool.name} (All Variations)?\nMode: ${addTime ? 'ACCUMULATE' : 'RESTART'}`,
+                variant: 'warning'
+            })) return;
 
             showLoadingOverlay('Activating...', true);
             try {
-                // Calculate Expiry Date (From TODAY)
-                const date = new Date();
-                if (unit === 'days') date.setDate(date.getDate() + val);
-                else if (unit === 'weeks') date.setDate(date.getDate() + (val * 7));
-                else if (unit === 'months') date.setMonth(date.getMonth() + val);
-                else if (unit === 'years') date.setFullYear(date.getFullYear() + val);
+                // Calculate Expiry Date
+                const baseDate = (addTime && selectedSchool.existingExpiry) ? selectedSchool.existingExpiry : new Date();
+                const expiryDate = new Date(baseDate.getTime());
+
+                if (unit === 'days') expiryDate.setDate(baseDate.getDate() + val);
+                else if (unit === 'weeks') expiryDate.setDate(baseDate.getDate() + (val * 7));
+                else if (unit === 'months') expiryDate.setMonth(baseDate.getMonth() + val);
+                else if (unit === 'years') expiryDate.setFullYear(baseDate.getFullYear() + val);
 
                 const sub = {
                     maxStudents: s,
                     maxClass: c,
-                    expiryDate: Timestamp.fromDate(date),
+                    expiryDate: Timestamp.fromDate(expiryDate),
                     activationHash: SYSTEM_ACTIVATION_HASH,
                     lastActivated: Timestamp.now()
                 };
@@ -957,7 +988,13 @@
                 await Promise.all(updates);
                 console.log(`[Batch Update] Granted access to ${variants.length} content variants for ${selectedSchool.baseName}`);
 
-                alert('✅ Template activated & Access Granted!');
+                await showConfirm({
+                    title: 'Activation Successful',
+                    message: `Manual template activated & Access Granted for ${variants.length} variants!`,
+                    confirmText: 'Great!',
+                    hideCancel: true,
+                    variant: 'success'
+                });
 
                 // Update local model
                 variants.forEach(v => v.access = true);
@@ -966,7 +1003,7 @@
                 resetPortal();
             } catch (e) {
                 console.error(e);
-                showMessage('❌ Activation failed', 'error');
+                alert('CRITICAL: Activation failed.');
             } finally {
                 showLoadingOverlay('', false);
             }
@@ -980,13 +1017,61 @@
             updateUI();
         }
 
-        function showMessage(t, type) {
-            const el = document.getElementById('message');
-            el.textContent = t;
-            el.className = `p-4 rounded-lg mb-4 text-sm font-bold shadow-sm border ${type === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'}`;
-            el.classList.remove('hidden');
-            setTimeout(() => el.classList.add('hidden'), 4000);
-        }
+        window.showConfirm = function (config) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('customModal');
+                const titleEl = document.getElementById('modalTitle');
+                const messageEl = document.getElementById('modalMessage');
+                const confirmBtn = document.getElementById('modalConfirmBtn');
+                const cancelBtn = document.getElementById('modalCancelBtn');
+                const iconContainer = document.getElementById('modalIcon');
+                const iconPath = document.getElementById('modalIconPath');
+
+                titleEl.textContent = config.title || 'Confirm';
+                messageEl.textContent = config.message || '';
+                confirmBtn.textContent = config.confirmText || 'Confirm';
+                cancelBtn.textContent = config.cancelText || 'Cancel';
+                cancelBtn.classList.toggle('hidden', config.hideCancel);
+
+                // Styling based on variant
+                const variant = config.variant || 'info';
+                if (variant === 'danger') {
+                    iconContainer.className = 'w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner';
+                    confirmBtn.className = 'flex-1 py-4 bg-red-600 text-white font-black rounded-2xl hover:bg-red-700 transition-all shadow-lg hover:shadow-red-500/30';
+                    iconPath.setAttribute('d', 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z');
+                } else if (variant === 'success') {
+                    iconContainer.className = 'w-16 h-16 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner';
+                    confirmBtn.className = 'flex-1 py-4 bg-green-600 text-white font-black rounded-2xl hover:bg-green-700 transition-all shadow-lg hover:shadow-green-500/30';
+                    iconPath.setAttribute('d', 'M5 13l4 4L19 7');
+                } else if (variant === 'warning') {
+                    iconContainer.className = 'w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner';
+                    confirmBtn.className = 'flex-1 py-4 bg-amber-600 text-white font-black rounded-2xl hover:bg-amber-700 transition-all shadow-lg hover:shadow-amber-500/30';
+                    iconPath.setAttribute('d', 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z');
+                } else {
+                    iconContainer.className = 'w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner';
+                    confirmBtn.className = 'flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-lg hover:shadow-blue-500/30';
+                    iconPath.setAttribute('d', 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z');
+                }
+
+                const onConfirm = () => {
+                    modal.classList.add('hidden');
+                    confirmBtn.removeEventListener('click', onConfirm);
+                    cancelBtn.removeEventListener('click', onCancel);
+                    resolve(true);
+                };
+
+                const onCancel = () => {
+                    modal.classList.add('hidden');
+                    confirmBtn.removeEventListener('click', onConfirm);
+                    cancelBtn.removeEventListener('click', onCancel);
+                    resolve(false);
+                };
+
+                confirmBtn.addEventListener('click', onConfirm);
+                cancelBtn.addEventListener('click', onCancel);
+                modal.classList.remove('hidden');
+            });
+        };
 
         window.showLoadingOverlay = function (text, s) {
             const el = document.getElementById('loadingText');
@@ -1453,6 +1538,29 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+    </div>
+    <!-- 💬 Custom MessageBox Modal -->
+    <div id="customModal"
+        class="hidden fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
+        <div
+            class="bg-white rounded-[2rem] shadow-2xl p-10 max-w-lg w-full border border-gray-100 animate-in zoom-in duration-300">
+            <div id="modalIcon"
+                class="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
+                <svg class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path id="modalIconPath" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </div>
+            <h2 id="modalTitle" class="text-3xl font-black text-center mb-4 tracking-tight">Confirm Action</h2>
+            <p id="modalMessage" class="text-gray-500 mb-10 font-medium text-center leading-relaxed"></p>
+            <div class="flex gap-4">
+                <button id="modalCancelBtn"
+                    class="flex-1 py-4 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-all active:scale-95">Cancel</button>
+                <button id="modalConfirmBtn"
+                    class="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all shadow-lg hover:shadow-blue-500/30 active:scale-95">Confirm</button>
             </div>
         </div>
     </div>
