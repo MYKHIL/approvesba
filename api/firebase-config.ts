@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 /**
@@ -15,6 +17,43 @@ const allowCors = (fn: (req: VercelRequest, res: VercelResponse) => Promise<any>
     return await fn(req, res);
 };
 
+function parseFirebaseComments(envPath: string): Record<number, string> {
+    const commentMap: Record<number, string> = {};
+
+    if (!fs.existsSync(envPath)) {
+        return commentMap;
+    }
+
+    const lines = fs.readFileSync(envPath, 'utf-8').split(/\r?\n/);
+    let lastComment = '';
+
+    for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) {
+            continue;
+        }
+
+        if (line.startsWith('#')) {
+            lastComment = line.slice(1).trim();
+            continue;
+        }
+
+        const match = line.match(/FIREBASE_(\d+)_PROJECT_ID=(.+)/);
+        if (match) {
+            const idx = Number(match[1]);
+            if (lastComment) {
+                commentMap[idx] = lastComment;
+                lastComment = '';
+            }
+            continue;
+        }
+
+        lastComment = '';
+    }
+
+    return commentMap;
+}
+
 async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' });
@@ -22,6 +61,8 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
     try {
         const configs: { [key: number]: any } = {};
+        const envPath = path.join(process.cwd(), '.env');
+        const commentMap = parseFirebaseComments(envPath);
         let index = 1;
 
         // Dynamic discovery of FIREBASE_N_* env vars
@@ -34,7 +75,8 @@ async function handler(req: VercelRequest, res: VercelResponse) {
                 messagingSenderId: process.env[`FIREBASE_${index}_MESSAGING_SENDER_ID`],
                 appId: process.env[`FIREBASE_${index}_APP_ID`],
                 measurementId: process.env[`FIREBASE_${index}_MEASUREMENT_ID`],
-                label: process.env[`FIREBASE_${index}_LABEL`] || `Database ${index}`
+                label: process.env[`FIREBASE_${index}_LABEL`] || `Database ${index}`,
+                comment: commentMap[index] || process.env[`FIREBASE_${index}_LABEL`] || ''
             };
             index++;
         }

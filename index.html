@@ -337,14 +337,22 @@
                 // Populate Target DB Select
                 targetSelect.innerHTML = '<option value="">Select Destination...</option>' +
                     Object.keys(dbs).filter(idx => parseInt(idx) !== selectedSchool.dbIndex)
-                        .map(idx => `<option value="${idx}">Database ${idx} (${FIREBASE_CONFIGS[idx].projectId})</option>`)
+                        .map(idx => {
+                            const config = FIREBASE_CONFIGS[idx] || {};
+                            const comment = config.comment ? ` - ${config.comment}` : '';
+                            return `<option value="${idx}">Database ${idx} (${config.projectId || 'unknown'}${comment})</option>`;
+                        })
                         .join('');
 
                 // Granular Tool Populators
                 const sourceVariants = schools.filter(s => s.baseName === selectedSchool.baseName && s.dbIndex === selectedSchool.dbIndex);
                 document.getElementById('granularSourceVariant').innerHTML = sourceVariants.map(v => `<option value="${v.id}">${v.name} (${v.id})</option>`).join('');
                 document.getElementById('granularTargetDb').innerHTML = '<option value="">Select Target DB...</option>' +
-                    Object.keys(dbs).map(idx => `<option value="${idx}">Database ${idx} ${idx == selectedSchool.dbIndex ? '(Current)' : ''}</option>`).join('');
+                    Object.keys(dbs).map(idx => {
+                        const config = FIREBASE_CONFIGS[idx] || {};
+                        const comment = config.comment ? ` - ${config.comment}` : '';
+                        return `<option value="${idx}">Database ${idx}${idx == selectedSchool.dbIndex ? ' (Current)' : ''}${comment}</option>`;
+                    }).join('');
                 document.getElementById('granularMigrationPanel').classList.remove('hidden');
 
             } else {
