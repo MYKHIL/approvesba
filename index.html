@@ -257,6 +257,27 @@
             color: inherit !important;
         }
 
+        .flip-in {
+            animation: flipIn 0.7s ease-out forwards;
+            transform-style: preserve-3d;
+            backface-visibility: hidden;
+        }
+
+        @keyframes flipIn {
+            0% {
+                transform: perspective(1000px) rotateY(-90deg) scale(0.95);
+                opacity: 0;
+            }
+            60% {
+                transform: perspective(1000px) rotateY(10deg) scale(1.02);
+                opacity: 1;
+            }
+            100% {
+                transform: perspective(1000px) rotateY(0deg) scale(1);
+                opacity: 1;
+            }
+        }
+
         /* CRITICAL DROPDOWN CONTRAST FIX: Native select option styling for dark theme browsers */
         select option {
             background-color: #0b1120 !important; /* Ensure the option list backdrop is dark */
@@ -356,7 +377,7 @@
         <div class="grid lg:grid-cols-12 gap-8 items-start">
             
             <!-- 🏫 Schools Panel (Left Column) -->
-            <div class="lg:col-span-5 bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-6 md:p-8 lg:flex lg:flex-col lg:h-full">
+            <div id="schoolPanel" class="lg:col-span-12 bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-6 md:p-8 lg:flex lg:flex-col lg:h-full">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                     <div>
                         <h2 class="text-2xl font-black tracking-tight text-white flex items-center gap-2">
@@ -390,315 +411,160 @@
                         <!-- Loaded via portal.js -->
                     </div>
                 </div>
+                <div id="schoolPagination" class="mt-4 hidden items-center justify-between gap-3 text-sm text-slate-400"></div>
             </div>
 
             <!-- ⚙️ Activation Panel (Right Column) -->
-            <div id="rightPanel" class="lg:col-span-7 space-y-8">
-                
-                <!-- Mode Toggle Segmented Control -->
-                <div class="bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-2">
-                    <div class="flex flex-col sm:flex-row gap-2">
-                        <button id="onlineToggle" onclick="switchMode('online')"
-                            class="flex-1 py-3.5 px-6 rounded-2xl font-black text-xs sm:text-sm tracking-wide transition-all duration-300 bg-blue-600 text-white shadow-glow-blue flex items-center justify-center gap-2">
-                            🌐 Online Cloud Activation
+            <div id="rightPanel" class="hidden lg:col-span-7">
+                <div id="rightPanelInner" class="space-y-8 transform-gpu transition-all duration-500 ease-out">
+                    <div class="flex flex-col sm:flex-row justify-between items-center gap-3">
+                        <button id="backToSchoolsBtn" onclick="goBackToSchoolList()"
+                            class="hidden inline-flex items-center gap-2 px-4 py-3 text-sm font-bold text-slate-200 bg-slate-900/80 border border-white/10 rounded-2xl hover:bg-slate-800 transition-all">
+                            ← Back to schools
                         </button>
-                        <button id="offlineToggle" onclick="switchMode('offline')"
-                            class="flex-1 py-3.5 px-6 rounded-2xl font-black text-xs sm:text-sm tracking-wide transition-all duration-300 bg-transparent text-slate-300 hover:text-white hover:bg-white/5 flex items-center justify-center gap-2">
-                            💾 Offline License Key generator
+                        <p class="text-xs uppercase tracking-[0.24em] text-slate-400">Step 2: Select activation workspace</p>
+                    </div>
+
+                    <!-- Mode Toggle Segmented Control -->
+                    <div class="bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-2">
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <button id="onlineToggle" onclick="switchMode('online')"
+                                class="flex-1 py-3.5 px-6 rounded-2xl font-black text-xs sm:text-sm tracking-wide transition-all duration-300 bg-blue-600 text-white shadow-glow-blue flex items-center justify-center gap-2">
+                                🌐 Online Cloud Activation
+                            </button>
+                            <button id="offlineToggle" onclick="switchMode('offline')"
+                                class="flex-1 py-3.5 px-6 rounded-2xl font-black text-xs sm:text-sm tracking-wide transition-all duration-300 bg-transparent text-slate-300 hover:text-white hover:bg-white/5 flex items-center justify-center gap-2">
+                                💾 Offline License Key generator
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="onlinePanel" class="space-y-6 hidden">
+                        <div id="onlineTabNav" class="hidden bg-slate-950/80 border border-white/10 rounded-3xl p-2 flex flex-wrap gap-2">
+                        <button id="tabSummaryBtn" type="button" onclick="switchOnlineTab('summary')"
+                            class="px-4 py-3 rounded-2xl text-sm font-semibold transition-all bg-blue-600 text-white">
+                            Summary
+                        </button>
+                        <button id="tabLicenseBtn" type="button" onclick="switchOnlineTab('license')"
+                            class="px-4 py-3 rounded-2xl text-sm font-semibold transition-all bg-slate-900 text-slate-200 hover:bg-slate-800">
+                            License
+                        </button>
+                        <button id="tabMigrationBtn" type="button" onclick="switchOnlineTab('migration')"
+                            class="px-4 py-3 rounded-2xl text-sm font-semibold transition-all bg-slate-900 text-slate-200 hover:bg-slate-800">
+                            Migration
+                        </button>
+                        <button id="tabTransferBtn" type="button" onclick="switchOnlineTab('transfer')"
+                            class="px-4 py-3 rounded-2xl text-sm font-semibold transition-all bg-slate-900 text-slate-200 hover:bg-slate-800">
+                            Transfer
                         </button>
                     </div>
-                </div>
 
-                <!-- Online Activation Workspace -->
-                <div id="onlinePanel" class="space-y-6">
-                    
-                    <!-- Master Authorization passcode gate -->
-                    <div id="passwordContainer" class="hidden">
-                        <div class="bg-amber-500/10 backdrop-blur-xl border border-amber-500/30 p-6 rounded-3xl shadow-glow-amber">
-                            <label class="block text-xs font-black text-amber-300 mb-3 uppercase tracking-widest flex items-center gap-2">
-                                🔐 Activation Authorization Code
-                            </label>
-                            <input id="activationPassword" type="password"
-                                class="w-full px-5 py-4 bg-slate-950/80 border border-amber-500/40 rounded-2xl focus:border-amber-400 focus:ring-4 focus:ring-amber-500/20 outline-none font-bold text-center text-xl text-amber-200 placeholder:text-amber-800"
-                                placeholder="••••••••" />
-                            <p class="text-[10px] text-amber-400/90 font-bold mt-2.5 text-center uppercase tracking-widest">
-                                High Privilege Level Required
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Placeholder / Welcome screen -->
-                    <div id="selectedSchool" class="bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-10 md:p-12">
-                        <div class="text-center py-8">
-                            <div class="text-5xl mb-4 animate-bounce">🔍</div>
-                            <h3 class="text-xl font-bold text-white mb-2">No Target Selected</h3>
-                            <p class="text-slate-300 text-sm max-w-sm mx-auto leading-relaxed">
-                                Please select an educational database registry from the list to preview configuration templates.
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Active DB Diagnostics Summary Display -->
-                    <div id="databaseSummaryPanel" class="hidden bg-slate-950/80 backdrop-blur-xl rounded-[2rem] border border-white/15 p-6 md:p-8 space-y-4">
-                        <!-- Content dynamically populated via portal.js -->
-                    </div>
-
-                    <!-- Cloud Configuration Form -->
-                    <div id="licenseForm"
-                        class="hidden bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-6 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div class="mb-6">
-                            <h2 class="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-                                🔑 License Configuration
-                            </h2>
-                            <p class="text-xs text-slate-300 font-semibold mt-1">Set template constraints and extend period terms</p>
+                    <div id="onlineTabContent" class="space-y-6 hidden">
+                        <div id="tabSummary" class="online-tab-panel hidden space-y-6">
+                            <div id="selectedSchool" class="bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-10 md:p-12"></div>
+                            <div id="databaseSummaryPanel" class="hidden bg-slate-950/80 backdrop-blur-xl rounded-[2rem] border border-white/15 p-6 md:p-8 space-y-4"></div>
                         </div>
 
-                        <!-- Template Grid selection -->
-                        <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 mb-8">
-                            <button onclick="applyTemplate(0)"
-                                class="p-3.5 bg-slate-950/80 border border-white/10 rounded-2xl hover:border-blue-500 hover:bg-slate-900 transition-all text-left group"
-                                data-template="0">
-                                <span class="block font-black text-xs text-slate-200 group-hover:text-blue-400">Trial</span>
-                                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mt-1">1 Week</span>
-                            </button>
-                            <button onclick="applyTemplate(1)"
-                                class="p-3.5 bg-slate-950/80 border border-white/10 rounded-2xl hover:border-blue-500 hover:bg-slate-900 transition-all text-left group"
-                                data-template="1">
-                                <span class="block font-black text-xs text-slate-200 group-hover:text-blue-400">Basic</span>
-                                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mt-1">12 mo</span>
-                            </button>
-                            <button onclick="applyTemplate(2)"
-                                class="p-3.5 bg-slate-950/80 border border-white/10 rounded-2xl hover:border-blue-500 hover:bg-slate-900 transition-all text-left group"
-                                data-template="2">
-                                <span class="block font-black text-xs text-slate-200 group-hover:text-blue-400">Standard</span>
-                                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mt-1">12 mo</span>
-                            </button>
-                            <button onclick="applyTemplate(3)"
-                                class="p-3.5 bg-slate-950/80 border border-white/10 rounded-2xl hover:border-blue-500 hover:bg-slate-900 transition-all text-left group"
-                                data-template="3">
-                                <span class="block font-black text-xs text-slate-200 group-hover:text-blue-400">Premium</span>
-                                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mt-1">12 mo</span>
-                            </button>
-                            <button onclick="applyTemplate(4)"
-                                class="p-3.5 bg-slate-950/80 border border-white/10 rounded-2xl hover:border-blue-500 hover:bg-slate-900 transition-all text-left group"
-                                data-template="4">
-                                <span class="block font-black text-xs text-slate-200 group-hover:text-blue-400">Professional</span>
-                                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mt-1">12 mo</span>
-                            </button>
-                            <button onclick="applyTemplate(5)"
-                                class="p-3.5 bg-slate-950/80 border border-white/10 rounded-2xl hover:border-blue-500 hover:bg-slate-900 transition-all text-left group"
-                                data-template="5">
-                                <span class="block font-black text-xs text-slate-200 group-hover:text-blue-400">Enterprise</span>
-                                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mt-1">12 mo</span>
-                            </button>
-                        </div>
-
-                        <!-- Configuration Input Elements -->
-                        <div class="space-y-6">
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="text-xs font-bold uppercase text-slate-300 ml-1 tracking-wider">Max Student Registers</label>
-                                    <input id="maxStudents" type="number"
-                                        class="w-full mt-2 px-5 py-4 bg-slate-950/80 border border-white/15 rounded-2xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 outline-none font-bold text-white transition-all" />
-                                </div>
-                                <div>
-                                    <label class="text-xs font-bold uppercase text-slate-300 ml-1 tracking-wider">Max Academic Classes</label>
-                                    <input id="maxClass" type="number"
-                                        class="w-full mt-2 px-5 py-4 bg-slate-950/80 border border-white/15 rounded-2xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 outline-none font-bold text-white transition-all" />
-                                </div>
-                            </div>
-                            
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="text-xs font-bold uppercase text-slate-300 ml-1 tracking-wider">Duration Value</label>
-                                    <input id="durationValue" type="number" min="1"
-                                        class="w-full mt-2 px-5 py-4 bg-slate-950/80 border border-white/15 rounded-2xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 outline-none font-bold text-white transition-all" />
-                                </div>
-                                <div>
-                                    <label class="text-xs font-bold uppercase text-slate-300 ml-1 tracking-wider">Scale Unit</label>
-                                    <div class="relative mt-2">
-                                        <select id="durationUnit"
-                                            class="w-full px-5 py-4 bg-slate-950/80 border border-white/15 rounded-2xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 outline-none font-extrabold appearance-none cursor-pointer text-white">
-                                            <option value="days">Days</option>
-                                            <option value="weeks">Weeks</option>
-                                            <option value="months">Months</option>
-                                            <option value="years">Years</option>
-                                        </select>
-                                        <div class="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-300">
-                                            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" />
-                                            </svg>
+                        <div id="tabLicense" class="online-tab-panel hidden">
+                            <div id="licenseForm" class="bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-6 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div class="grid gap-6">
+                                    <div id="currentExpiryDisplay" class="hidden"></div>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="block text-xs uppercase text-slate-400 mb-2">Max Students</label>
+                                            <input id="maxStudents" type="number" min="0" class="w-full px-4 py-3 rounded-2xl border border-white/10 bg-slate-950 text-white outline-none" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs uppercase text-slate-400 mb-2">Max Classes</label>
+                                            <input id="maxClass" type="number" min="0" class="w-full px-4 py-3 rounded-2xl border border-white/10 bg-slate-950 text-white outline-none" />
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-
-                            <div id="currentExpiryDisplay" class="hidden p-4 rounded-2xl bg-slate-950/40 border border-white/15 text-sm text-slate-200 font-semibold"></div>
-                            <div id="expectedExpiryDisplay" class="hidden p-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-sm text-blue-300 font-bold"></div>
-
-                            <button onclick="activateLicense()"
-                                class="w-full mt-4 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold rounded-2xl transition-all shadow-glow-blue text-sm uppercase tracking-wider active:scale-[0.98]">
-                                Authorize License Activation
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Database Relocation (Migration) Panel -->
-                    <div id="migrationPanel"
-                        class="hidden bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-6 md:p-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div class="flex items-center gap-4 mb-5">
-                            <div class="w-12 h-12 bg-amber-500/15 text-amber-400 rounded-2xl flex items-center justify-center border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h2 class="text-2xl font-black tracking-tight text-white">Migration Utility</h2>
-                                <p class="text-xs text-slate-300 font-semibold mt-0.5">Move database instances directly across servers</p>
-                            </div>
-                        </div>
-
-                        <p class="text-sm text-slate-300 mb-6 font-semibold leading-relaxed">
-                            Relocate this specific school organization and structural tables safely to an alternative storage environment.
-                        </p>
-
-                        <div class="space-y-6">
-                            <div class="bg-slate-950/80 p-5 rounded-2xl border border-white/15">
-                                <label class="text-xs font-bold uppercase text-slate-300 ml-1 tracking-wider">Target Remote Database</label>
-                                <div class="relative mt-2">
-                                    <select id="targetDbSelect"
-                                        class="w-full px-5 py-4 bg-slate-900 border border-white/15 rounded-2xl focus:border-amber-400 focus:ring-4 focus:ring-amber-500/20 outline-none font-bold appearance-none cursor-pointer text-white">
-                                        <option value="">Select Destination Database...</option>
-                                    </select>
-                                    <div class="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-300">
-                                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7" />
-                                        </svg>
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label class="block text-xs uppercase text-slate-400 mb-2">Duration</label>
+                                            <input id="durationValue" type="number" min="1" class="w-full px-4 py-3 rounded-2xl border border-white/10 bg-slate-950 text-white outline-none" />
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <label class="block text-xs uppercase text-slate-400 mb-2">Unit</label>
+                                            <select id="durationUnit" class="w-full px-4 py-3 rounded-2xl border border-white/10 bg-slate-950 text-white outline-none">
+                                                <option value="days">Days</option>
+                                                <option value="weeks">Weeks</option>
+                                                <option value="months">Months</option>
+                                                <option value="years">Years</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div id="expectedExpiryDisplay" class="hidden"></div>
+                                    <div id="passwordContainer" class="hidden">
+                                        <label class="block text-xs uppercase text-amber-300 mb-2">Activation Master Password</label>
+                                        <input id="activationPassword" type="password" placeholder="Enter master password"
+                                            class="w-full px-4 py-3 rounded-2xl border border-white/10 bg-slate-950 text-white outline-none" />
+                                    </div>
+                                    <div class="flex flex-col sm:flex-row gap-3">
+                                        <button onclick="activateLicense()" class="flex-1 py-3 rounded-2xl bg-blue-600 text-white font-bold hover:bg-blue-500 transition-all">Activate License</button>
+                                        <button onclick="showActivationWorkspace()" class="flex-1 py-3 rounded-2xl bg-slate-800 text-slate-200 hover:bg-slate-700 transition-all">Refresh Wizard</button>
                                     </div>
                                 </div>
                             </div>
-
-                            <div class="bg-red-500/10 p-5 rounded-2xl border border-red-500/35">
-                                <label class="block text-xs font-black text-red-400 mb-2 uppercase tracking-widest">⚠️ High Priority Safeguard Warning</label>
-                                <p class="text-xs text-red-300 font-bold leading-relaxed">
-                                    This migration event replaces keys, metrics, configurations, and records existing on the target instance database. This action is irreversible.
-                                </p>
-                            </div>
-
-                            <button onclick="migrateSchool()"
-                                class="w-full py-4 bg-transparent text-amber-400 border-2 border-amber-500 hover:bg-amber-500 hover:text-slate-950 font-black rounded-2xl transition-all shadow-glow-amber text-xs uppercase tracking-widest active:scale-[0.98]">
-                                INITIALIZE DATABASE MIGRATION
-                            </button>
                         </div>
-                    </div>
 
-                    <!-- Selective Data Collection Transfer Panel -->
-                    <div id="granularMigrationPanel"
-                        class="hidden bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-6 md:p-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div class="flex items-center gap-4 mb-5">
-                            <div class="w-12 h-12 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center border border-blue-500/30">
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h2 class="text-2xl font-black tracking-tight text-white">Granular Transfer</h2>
-                                <p class="text-xs text-slate-300 font-semibold mt-0.5">Transfer isolated collections across environments</p>
+                        <div id="tabMigration" class="online-tab-panel hidden">
+                            <div id="migrationPanel" class="bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-6 md:p-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div class="space-y-6">
+                                    <div>
+                                        <h3 class="text-xl font-black text-white">Move School Data</h3>
+                                        <p class="text-sm text-slate-400 mt-1">Copy the selected school to another database.</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs uppercase text-slate-400 mb-2">Target Database</label>
+                                        <select id="targetDbSelect" class="w-full px-4 py-3 rounded-2xl border border-white/10 bg-slate-950 text-white outline-none"></select>
+                                    </div>
+                                    <button onclick="migrateSchool()" class="w-full py-3 rounded-2xl bg-amber-500 text-slate-950 font-bold hover:bg-amber-400 transition-all">Start Migration</button>
+                                </div>
                             </div>
                         </div>
 
-                        <p class="text-sm text-slate-300 mb-6 font-semibold leading-relaxed">
-                            Extract, structure, and clone explicit document collections cleanly without affecting general setup parameters.
-                        </p>
-
-                        <div class="space-y-6">
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="text-xs font-bold uppercase text-slate-300 ml-1 tracking-wider">Source Instance</label>
-                                    <select id="granularSourceVariant"
-                                        class="w-full mt-2 px-5 py-4 bg-slate-950/80 border border-white/15 rounded-2xl focus:border-blue-500 outline-none font-extrabold text-white">
-                                    </select>
+                        <div id="tabTransfer" class="online-tab-panel hidden">
+                            <div id="granularMigrationPanel" class="bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-6 md:p-8 mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div class="space-y-6">
+                                    <div>
+                                        <h3 class="text-xl font-black text-white">Granular Transfer</h3>
+                                        <p class="text-sm text-slate-400 mt-1">Move specific school collections or metadata between variants and databases.</p>
+                                    </div>
+                                    <div class="grid gap-4 md:grid-cols-2">
+                                        <div>
+                                            <label class="block text-xs uppercase text-slate-400 mb-2">Source Variant</label>
+                                            <select id="granularSourceVariant" class="w-full px-4 py-3 rounded-2xl border border-white/10 bg-slate-950 text-white outline-none"></select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs uppercase text-slate-400 mb-2">Target Database</label>
+                                            <select id="granularTargetDb" onchange="fetchTargetVariants(parseInt(this.value))" class="w-full px-4 py-3 rounded-2xl border border-white/10 bg-slate-950 text-white outline-none"></select>
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <label class="block text-xs uppercase text-slate-400 mb-2">Target Variant</label>
+                                            <select id="granularTargetVariant" class="w-full px-4 py-3 rounded-2xl border border-white/10 bg-slate-950 text-white outline-none"></select>
+                                        </div>
+                                    </div>
+                                    <div class="grid gap-3 sm:grid-cols-2">
+                                        <label class="inline-flex items-center gap-2 text-sm text-slate-300"><input id="checkAssessments" type="checkbox" class="h-4 w-4 rounded border-white/10 bg-slate-950" /> Assessments</label>
+                                        <label class="inline-flex items-center gap-2 text-sm text-slate-300"><input id="checkClasses" type="checkbox" class="h-4 w-4 rounded border-white/10 bg-slate-950" /> Classes</label>
+                                        <label class="inline-flex items-center gap-2 text-sm text-slate-300"><input id="checkStudents" type="checkbox" class="h-4 w-4 rounded border-white/10 bg-slate-950" /> Students</label>
+                                        <label class="inline-flex items-center gap-2 text-sm text-slate-300"><input id="checkSubjects" type="checkbox" class="h-4 w-4 rounded border-white/10 bg-slate-950" /> Subjects</label>
+                                        <label class="inline-flex items-center gap-2 text-sm text-slate-300"><input id="checkScores" type="checkbox" class="h-4 w-4 rounded border-white/10 bg-slate-950" /> Scores</label>
+                                        <label class="inline-flex items-center gap-2 text-sm text-slate-300"><input id="checkScoreBuckets" type="checkbox" class="h-4 w-4 rounded border-white/10 bg-slate-950" /> Score Buckets</label>
+                                        <label class="inline-flex items-center gap-2 text-sm text-slate-300"><input id="checkConfig" type="checkbox" class="h-4 w-4 rounded border-white/10 bg-slate-950" /> Config</label>
+                                        <label class="inline-flex items-center gap-2 text-sm text-slate-300"><input id="checkUsers" type="checkbox" class="h-4 w-4 rounded border-white/10 bg-slate-950" /> Users</label>
+                                    </div>
+                                    <div class="flex flex-col sm:flex-row gap-3">
+                                        <button onclick="runGranularMigration('copy')" class="flex-1 py-3 rounded-2xl bg-blue-600 text-white font-bold hover:bg-blue-500 transition-all">Copy Selected Data</button>
+                                        <button onclick="runGranularMigration('move')" class="flex-1 py-3 rounded-2xl bg-red-600 text-white font-bold hover:bg-red-500 transition-all">Move Selected Data</button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label class="text-xs font-bold uppercase text-slate-300 ml-1 tracking-wider">Target Instance</label>
-                                    <select id="granularTargetDb" onchange="fetchTargetVariants(this.value)"
-                                        class="w-full mt-2 px-5 py-4 bg-slate-950/80 border border-white/15 rounded-2xl focus:border-blue-500 outline-none font-extrabold text-white">
-                                        <option value="">Select Target Db Registry...</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label class="text-xs font-bold uppercase text-slate-300 ml-1 tracking-wider">Target Directory Context</label>
-                                <select id="granularTargetVariant"
-                                    class="w-full mt-2 px-5 py-4 bg-slate-950/80 border border-white/15 rounded-2xl focus:border-blue-500 outline-none font-extrabold text-white">
-                                    <option value="">Select Target DB first...</option>
-                                </select>
-                            </div>
-
-                            <div class="bg-slate-950/80 p-6 rounded-[1.5rem] border border-white/15">
-                                <label class="block text-xs font-black text-slate-300 mb-4 uppercase tracking-widest text-center">
-                                    Document Collections To Include
-                                </label>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <label class="flex items-center space-x-3 cursor-pointer p-3 rounded-xl hover:bg-white/5 transition-all">
-                                        <input type="checkbox" id="checkUsers"
-                                            class="w-5 h-5 rounded border-white/25 bg-slate-950 text-blue-600 focus:ring-offset-slate-900 focus:ring-blue-500 focus:ring-2">
-                                        <span class="text-sm font-bold text-slate-200">Users (System Field)</span>
-                                    </label>
-                                    <label class="flex items-center space-x-3 cursor-pointer p-3 rounded-xl hover:bg-white/5 transition-all">
-                                        <input type="checkbox" id="checkAssessments"
-                                            class="w-5 h-5 rounded border-white/25 bg-slate-950 text-blue-600 focus:ring-offset-slate-900 focus:ring-blue-500 focus:ring-2">
-                                        <span class="text-sm font-bold text-slate-200">Assessments</span>
-                                    </label>
-                                    <label class="flex items-center space-x-3 cursor-pointer p-3 rounded-xl hover:bg-white/5 transition-all">
-                                        <input type="checkbox" id="checkClasses"
-                                            class="w-5 h-5 rounded border-white/25 bg-slate-950 text-blue-600 focus:ring-offset-slate-900 focus:ring-blue-500 focus:ring-2">
-                                        <span class="text-sm font-bold text-slate-200">Classes</span>
-                                    </label>
-                                    <label class="flex items-center space-x-3 cursor-pointer p-3 rounded-xl hover:bg-white/5 transition-all">
-                                        <input type="checkbox" id="checkStudents"
-                                            class="w-5 h-5 rounded border-white/25 bg-slate-950 text-blue-600 focus:ring-offset-slate-900 focus:ring-blue-500 focus:ring-2">
-                                        <span class="text-sm font-bold text-slate-200">Students</span>
-                                    </label>
-                                    <label class="flex items-center space-x-3 cursor-pointer p-3 rounded-xl hover:bg-white/5 transition-all">
-                                        <input type="checkbox" id="checkSubjects"
-                                            class="w-5 h-5 rounded border-white/25 bg-slate-950 text-blue-600 focus:ring-offset-slate-900 focus:ring-blue-500 focus:ring-2">
-                                        <span class="text-sm font-bold text-slate-200">Subjects</span>
-                                    </label>
-                                    <label class="flex items-center space-x-3 cursor-pointer p-3 rounded-xl hover:bg-white/5 transition-all">
-                                        <input type="checkbox" id="checkScores"
-                                            class="w-5 h-5 rounded border-white/25 bg-slate-950 text-blue-600 focus:ring-offset-slate-900 focus:ring-blue-500 focus:ring-2">
-                                        <span class="text-sm font-bold text-slate-200">Scores (Legacy format)</span>
-                                    </label>
-                                    <label class="flex items-center space-x-3 cursor-pointer p-3 rounded-xl hover:bg-white/5 transition-all">
-                                        <input type="checkbox" id="checkScoreBuckets" checked
-                                            class="w-5 h-5 rounded border-white/25 bg-slate-950 text-blue-600 focus:ring-offset-slate-900 focus:ring-blue-500 focus:ring-2">
-                                        <span class="text-sm font-bold text-slate-200">Score Buckets</span>
-                                    </label>
-                                    <label class="flex items-center space-x-3 cursor-pointer p-3 rounded-xl hover:bg-white/5 transition-all">
-                                        <input type="checkbox" id="checkConfig"
-                                            class="w-5 h-5 rounded border-white/25 bg-slate-950 text-blue-600 focus:ring-offset-slate-900 focus:ring-blue-500 focus:ring-2">
-                                        <span class="text-sm font-bold text-slate-200">Configuration Variables</span>
-                                    </label>
-                                </div>
-                            </div>
-
-                            <div class="flex flex-col sm:flex-row gap-4">
-                                <button onclick="runGranularMigration('copy')"
-                                    class="flex-1 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold rounded-2xl transition-all shadow-glow-blue text-xs uppercase tracking-widest active:scale-95">
-                                    CLONE DATASETS
-                                </button>
-                                <button onclick="runGranularMigration('move')"
-                                    class="flex-1 py-4 bg-transparent text-red-400 border-2 border-red-500/50 hover:border-red-500 hover:bg-red-500/10 font-extrabold rounded-2xl transition-all text-xs uppercase tracking-widest active:scale-95">
-                                    MOVE DATASETS
-                                </button>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Offline Activation Workspace (Hidden Initially) -->
                 <div id="offlinePanel" class="hidden">
                     <div class="bg-glassBg backdrop-blur-xl rounded-[2rem] shadow-glass border border-glassBorder p-6 md:p-8">
                         <div class="mb-6">

@@ -18,6 +18,8 @@
         let selectedSchool = null;
         let selectedVariantId = null;
         let selectedTemplate = null;
+        let currentActivationMode = 'online';
+        let currentOnlineTab = 'summary';
 
         /**
          * Dynamic Bootstrap: Fetch configuration and initialize Firebase
@@ -154,9 +156,13 @@
             }
         }
 
+        const PAGE_SIZE = 10;
+        let currentPage = 1;
+
         async function fetchAllSchools() {
             showLoadingOverlay('Fetching Schools...', true);
             schools = [];
+            currentPage = 1;
             const schoolList = document.getElementById('schoolList');
             schoolList.innerHTML = '<div class="text-center text-gray-500 py-4">Loading schools...</div>';
 
@@ -165,14 +171,13 @@
                     const snapshot = await getDocs(collection(db, 'schools'));
                     snapshot.forEach(doc => {
                         const data = doc.data();
-                        // SHOW ALL SCHOOLS (Even Access: false) so we can activate them
                         schools.push({
                             id: doc.id,
                             name: data.settings?.schoolName || 'Unknown School',
                             baseName: doc.id.split('_')[0],
                             dbIndex: parseInt(dbIndex),
                             data: data,
-                            access: data.Access // Store access status
+                            access: data.Access
                         });
                     });
                 });
@@ -187,13 +192,43 @@
             }
         }
 
+        function updateSchoolPagination(totalPages) {
+            const pagination = document.getElementById('schoolPagination');
+            if (!pagination) return;
+            if (totalPages <= 1) {
+                pagination.classList.add('hidden');
+                return;
+            }
+
+            pagination.classList.remove('hidden');
+            pagination.innerHTML = `
+                <div>Page ${currentPage} of ${totalPages}</div>
+                <div class="flex gap-2">
+                    <button id="prevPageBtn" class="px-3 py-2 rounded-2xl bg-slate-900 text-slate-200 hover:bg-slate-800 transition-all" ${currentPage === 1 ? 'disabled' : ''}>Prev</button>
+                    <button id="nextPageBtn" class="px-3 py-2 rounded-2xl bg-slate-900 text-slate-200 hover:bg-slate-800 transition-all" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
+                </div>
+            `;
+
+            document.getElementById('prevPageBtn')?.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderSchools(document.getElementById('searchInput').value);
+                }
+            });
+            document.getElementById('nextPageBtn')?.addEventListener('click', () => {
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderSchools(document.getElementById('searchInput').value);
+                }
+            });
+        }
+
         function renderSchools(filter = '') {
             const schoolList = document.getElementById('schoolList');
 
             // GROUPING LOGIC
             const groups = {};
             schools.forEach(school => {
-                // Filter first
                 if (filter && !school.name.toLowerCase().includes(filter.toLowerCase()) && !school.id.toLowerCase().includes(filter.toLowerCase())) {
                     return;
                 }
@@ -211,13 +246,18 @@
             });
 
             const uniqueSchools = Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+            const totalPages = Math.max(1, Math.ceil(uniqueSchools.length / PAGE_SIZE));
+            if (currentPage > totalPages) currentPage = totalPages;
 
             if (uniqueSchools.length === 0) {
                 schoolList.innerHTML = '<div class="text-center text-gray-500 py-8">No schools found</div>';
+                document.getElementById('schoolPagination')?.classList.add('hidden');
                 return;
             }
 
-            schoolList.innerHTML = uniqueSchools.map(school => {
+            const pagedSchools = uniqueSchools.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+            schoolList.innerHTML = pagedSchools.map(school => {
                 const email = getEmailForDbIndex(school.dbIndex);
                 const isSelected = selectedSchool?.baseName === school.baseName;
                 return `
@@ -240,6 +280,8 @@
                 </div>
             `;
             }).join('');
+
+            updateSchoolPagination(totalPages);
         }
 
         function getEmailForDbIndex(dbIndex) {
@@ -273,6 +315,13 @@
             selectedSchool.existingExpiry = null; // Reset
             await loadSubscription(selectedSchool);
             updateUI();
+            showActivationWorkspace();
+            if (typeof window.switchMode === 'function') {
+                window.switchMode('online');
+            }
+            if (typeof window.switchOnlineTab === 'function') {
+                window.switchOnlineTab('summary');
+            }
 
             if (window.matchMedia('(max-width: 1024px)').matches) {
                 const rightPanel = document.getElementById('rightPanel');
@@ -369,7 +418,7 @@
                 summaryPanel.innerHTML = `
                     <div class="flex items-center justify-between gap-4 mb-4">
                         <div>
-                            <h3 class="text-xl font-black text-gray-900">Database Summary</h3>
+                            <h3 class="text-xl font-black text-gray-300">Database Summary</h3>
                             <p class="text-sm text-gray-500">${selectedSchool.id} in DB ${selectedSchool.dbIndex}</p>
                         </div>
                         <button onclick="document.getElementById('databaseSummaryPanel').classList.add('hidden')"
@@ -526,6 +575,7 @@
             if (!selectedSchool && summaryPanel) summaryPanel.classList.add('hidden');
 
             if (selectedSchool) {
+                showActivationWorkspace();
                 el.innerHTML = `
                     <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
                         <p class="text-xs text-blue-600 font-bold uppercase mb-1">Target School</p>
@@ -583,29 +633,41 @@
                     });
                 }
 
-                migrate.classList.remove('hidden');
-                document.getElementById('passwordContainer').classList.remove('hidden');
+                const targetSelect = document.getElementById('targetDbSelect');
+                const passwordContainer = document.getElementById('passwordContainer');
+                const sourceVariantSelect = document.getElementById('granularSourceVariant');
+                const targetDbSelect = document.getElementById('granularTargetDb');
+                const granularMigrationPanel = document.getElementById('granularMigrationPanel');
 
-                // Populate Target DB Select
-                targetSelect.innerHTML = '<option value="">Select Destination...</option>' +
-                    Object.keys(dbs).filter(idx => parseInt(idx) !== selectedSchool.dbIndex)
-                        .map(idx => {
+                migrate.classList.remove('hidden');
+                if (passwordContainer) passwordContainer.classList.remove('hidden');
+
+                if (targetSelect) {
+                    targetSelect.innerHTML = '<option value="">Select Destination...</option>' +
+                        Object.keys(dbs).filter(idx => parseInt(idx) !== selectedSchool.dbIndex)
+                            .map(idx => {
+                                const config = FIREBASE_CONFIGS[idx] || {};
+                                const comment = config.comment ? ` - ${config.comment}` : '';
+                                return `<option value="${idx}">Database ${idx} (${config.projectId || 'unknown'}${comment})</option>`;
+                            })
+                            .join('');
+                }
+
+                if (sourceVariantSelect) {
+                    const sourceVariants = schools.filter(s => s.baseName === selectedSchool.baseName && s.dbIndex === selectedSchool.dbIndex);
+                    sourceVariantSelect.innerHTML = sourceVariants.map(v => `<option value="${v.id}">${v.name} (${v.id})</option>`).join('');
+                }
+
+                if (targetDbSelect) {
+                    targetDbSelect.innerHTML = '<option value="">Select Target DB...</option>' +
+                        Object.keys(dbs).map(idx => {
                             const config = FIREBASE_CONFIGS[idx] || {};
                             const comment = config.comment ? ` - ${config.comment}` : '';
-                            return `<option value="${idx}">Database ${idx} (${config.projectId || 'unknown'}${comment})</option>`;
-                        })
-                        .join('');
+                            return `<option value="${idx}">Database ${idx}${idx == selectedSchool.dbIndex ? ' (Current)' : ''}${comment}</option>`;
+                        }).join('');
+                }
 
-                // Granular Tool Populators
-                const sourceVariants = schools.filter(s => s.baseName === selectedSchool.baseName && s.dbIndex === selectedSchool.dbIndex);
-                document.getElementById('granularSourceVariant').innerHTML = sourceVariants.map(v => `<option value="${v.id}">${v.name} (${v.id})</option>`).join('');
-                document.getElementById('granularTargetDb').innerHTML = '<option value="">Select Target DB...</option>' +
-                    Object.keys(dbs).map(idx => {
-                        const config = FIREBASE_CONFIGS[idx] || {};
-                        const comment = config.comment ? ` - ${config.comment}` : '';
-                        return `<option value="${idx}">Database ${idx}${idx == selectedSchool.dbIndex ? ' (Current)' : ''}${comment}</option>`;
-                    }).join('');
-                document.getElementById('granularMigrationPanel').classList.remove('hidden');
+                if (granularMigrationPanel) granularMigrationPanel.classList.remove('hidden');
 
             } else {
                 el.innerHTML = '<p class="text-gray-400 text-center py-4 italic">Select a school from the left to begin</p>';
@@ -613,7 +675,87 @@
                 migrate.classList.add('hidden');
                 document.getElementById('granularMigrationPanel').classList.add('hidden');
                 document.getElementById('passwordContainer').classList.add('hidden');
+
+                const rightPanel = document.getElementById('rightPanel');
+                if (rightPanel) {
+                    rightPanel.classList.add('hidden');
+                }
+                const schoolPanel = document.getElementById('schoolPanel');
+                if (schoolPanel) {
+                    schoolPanel.classList.remove('lg:col-span-5');
+                    schoolPanel.classList.add('lg:col-span-12');
+                }
             }
+        }
+
+        window.showActivationWorkspace = function () {
+            const rightPanel = document.getElementById('rightPanel');
+            const schoolPanel = document.getElementById('schoolPanel');
+            const backBtn = document.getElementById('backToSchoolsBtn');
+
+            if (rightPanel) {
+                rightPanel.classList.remove('hidden');
+            }
+            if (schoolPanel) {
+                schoolPanel.classList.remove('lg:col-span-12');
+                schoolPanel.classList.add('lg:col-span-5');
+            }
+            if (backBtn) {
+                backBtn.classList.toggle('hidden', !window.matchMedia('(max-width: 1024px)').matches);
+            }
+            const inner = document.getElementById('rightPanelInner');
+            if (inner) {
+                inner.classList.add('flip-in');
+                setTimeout(() => inner.classList.remove('flip-in'), 700);
+            }
+            const onlinePanel = document.getElementById('onlinePanel');
+            if (onlinePanel) {
+                onlinePanel.classList.remove('hidden');
+            }
+            const onlineNav = document.getElementById('onlineTabNav');
+            if (onlineNav) {
+                onlineNav.classList.remove('hidden');
+            }
+            const onlineContent = document.getElementById('onlineTabContent');
+            if (onlineContent) {
+                onlineContent.classList.remove('hidden');
+            }
+        }
+
+        window.goBackToSchoolList = function () {
+            const rightPanel = document.getElementById('rightPanel');
+            const schoolPanel = document.getElementById('schoolPanel');
+            const backBtn = document.getElementById('backToSchoolsBtn');
+
+            if (rightPanel) {
+                rightPanel.classList.add('hidden');
+            }
+            if (schoolPanel) {
+                schoolPanel.classList.remove('lg:col-span-5');
+                schoolPanel.classList.add('lg:col-span-12');
+            }
+            if (backBtn) {
+                backBtn.classList.add('hidden');
+            }
+        }
+
+        window.switchOnlineTab = function (tab) {
+            currentOnlineTab = tab;
+            const tabs = ['summary', 'license', 'migration', 'transfer'];
+            tabs.forEach(section => {
+                const button = document.getElementById(`tab${section.charAt(0).toUpperCase() + section.slice(1)}Btn`);
+                const panel = document.getElementById(`tab${section.charAt(0).toUpperCase() + section.slice(1)}`);
+                const active = section === tab;
+                if (button) {
+                    button.classList.toggle('bg-blue-600', active);
+                    button.classList.toggle('text-white', active);
+                    button.classList.toggle('bg-slate-900', !active);
+                    button.classList.toggle('text-slate-200', !active);
+                }
+                if (panel) {
+                    panel.classList.toggle('hidden', !active);
+                }
+            });
         }
 
         window.updateExpectedExpiry = function () {
@@ -1341,7 +1483,10 @@
 
         window.addEventListener('DOMContentLoaded', () => {
             loadBootstrapData();
-            document.getElementById('searchInput').addEventListener('input', (e) => renderSchools(e.target.value));
+            document.getElementById('searchInput').addEventListener('input', (e) => {
+                currentPage = 1;
+                renderSchools(e.target.value);
+            });
             document.getElementById('durationValue').addEventListener('input', updateExpectedExpiry);
             document.getElementById('durationUnit').addEventListener('change', updateExpectedExpiry);
             document.getElementById('refreshBtn').addEventListener('click', fetchAllSchools);
