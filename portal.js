@@ -565,7 +565,7 @@
             // Ensure inputs are refreshed
             updateExpectedExpiry();
         }
-   
+
         function updateUI() {
             const el = document.getElementById('selectedSchool');
             const form = document.getElementById('licenseForm');
@@ -691,15 +691,26 @@
         window.showActivationWorkspace = function () {
             const rightPanel = document.getElementById('rightPanel');
             const schoolPanel = document.getElementById('schoolPanel');
+            const pagination = document.getElementById('schoolPagination');
+            const searchContainer = document.getElementById('searchContainer');
             const backBtn = document.getElementById('backToSchoolsBtn');
 
-            if (schoolPanel) {
-                schoolPanel.classList.add('hidden');
-            }
             if (rightPanel) {
-                rightPanel.classList.remove('hidden');
+                rightPanel.style.display = 'block';
                 rightPanel.classList.remove('lg:col-span-7');
                 rightPanel.classList.add('lg:col-span-12');
+            }
+            if (schoolPanel) {
+                schoolPanel.style.display = 'none';
+                schoolPanel.classList.add('hidden');
+            }
+            if (pagination) {
+                pagination.style.display = 'none';
+                pagination.classList.add('hidden');
+            }
+            if (searchContainer) {
+                searchContainer.style.display = 'none';
+                searchContainer.classList.add('hidden');
             }
             if (backBtn) {
                 backBtn.classList.remove('hidden');
@@ -726,17 +737,28 @@
         window.goBackToSchoolList = function () {
             const rightPanel = document.getElementById('rightPanel');
             const schoolPanel = document.getElementById('schoolPanel');
+            const pagination = document.getElementById('schoolPagination');
+            const searchContainer = document.getElementById('searchContainer');
             const backBtn = document.getElementById('backToSchoolsBtn');
 
             if (rightPanel) {
-                rightPanel.classList.add('hidden');
+                rightPanel.style.display = 'none';
                 rightPanel.classList.remove('lg:col-span-12');
                 rightPanel.classList.add('lg:col-span-7');
             }
             if (schoolPanel) {
+                schoolPanel.style.display = '';
                 schoolPanel.classList.remove('hidden');
                 schoolPanel.classList.remove('lg:col-span-5');
                 schoolPanel.classList.add('lg:col-span-12');
+            }
+            if (pagination) {
+                pagination.style.display = '';
+                pagination.classList.remove('hidden');
+            }
+            if (searchContainer) {
+                searchContainer.style.display = '';
+                searchContainer.classList.remove('hidden');
             }
             if (backBtn) {
                 backBtn.classList.add('hidden');
