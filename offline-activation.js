@@ -9,7 +9,8 @@ const BASE_IV_STRING = "SBAProIV20231234!";
 
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const isGitHubPages = window.location.hostname.includes('github.io');
-const API_BASE_URL = isLocal || isGitHubPages
+const isFileProtocol = window.location.protocol === 'file:' || !window.location.hostname;
+const API_BASE_URL = isLocal || isGitHubPages || isFileProtocol
     ? 'https://approvesba.vercel.app/api'
     : '/api';
 
@@ -196,15 +197,15 @@ async function createUserToken(username, licenseTokenBase64) {
 // Switch activation mode
 function switchMode(mode) {
     activationMode = mode;
-    document.getElementById('onlineToggle').classList.toggle('bg-blue-600', mode === 'online');
-    document.getElementById('onlineToggle').classList.toggle('text-white', mode === 'online');
-    document.getElementById('onlineToggle').classList.toggle('bg-gray-100', mode !== 'online');
-    document.getElementById('onlineToggle').classList.toggle('text-gray-600', mode !== 'online');
+    document.getElementById('onlineToggle').classList.toggle('bg-sky-500', mode === 'online');
+    document.getElementById('onlineToggle').classList.toggle('text-slate-950', mode === 'online');
+    document.getElementById('onlineToggle').classList.toggle('bg-slate-800', mode !== 'online');
+    document.getElementById('onlineToggle').classList.toggle('text-slate-300', mode !== 'online');
 
-    document.getElementById('offlineToggle').classList.toggle('bg-blue-600', mode === 'offline');
-    document.getElementById('offlineToggle').classList.toggle('text-white', mode === 'offline');
-    document.getElementById('offlineToggle').classList.toggle('bg-gray-100', mode !== 'offline');
-    document.getElementById('offlineToggle').classList.toggle('text-gray-600', mode !== 'offline');
+    document.getElementById('offlineToggle').classList.toggle('bg-sky-500', mode === 'offline');
+    document.getElementById('offlineToggle').classList.toggle('text-slate-950', mode === 'offline');
+    document.getElementById('offlineToggle').classList.toggle('bg-slate-800', mode !== 'offline');
+    document.getElementById('offlineToggle').classList.toggle('text-slate-300', mode !== 'offline');
 
     // Show/hide appropriate panels
     document.getElementById('onlinePanel').classList.toggle('hidden', mode !== 'online');
