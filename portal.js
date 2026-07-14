@@ -219,12 +219,16 @@
 
             schoolList.innerHTML = uniqueSchools.map(school => {
                 const email = getEmailForDbIndex(school.dbIndex);
+                const isSelected = selectedSchool?.baseName === school.baseName;
                 return `
-                <div class="p-4 border rounded-lg hover:bg-blue-50 cursor-pointer transition-colors ${selectedSchool?.baseName === school.baseName ? 'bg-blue-100 border-blue-500 ring-2' : ''}"
+                <div class="p-4 border rounded-lg hover:bg-blue-50 cursor-pointer transition-colors ${isSelected ? 'bg-blue-100 border-blue-500 ring-2' : ''}"
                      onclick="selectSchool('${school.baseName}')">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h3 class="font-semibold text-gray-900">${school.name}</h3>
+                    <div class="flex justify-between items-start gap-3">
+                        <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-2 mb-2">
+                                <h3 class="font-semibold text-gray-900 truncate">${school.name}</h3>
+                                ${isSelected ? '<span class="inline-flex items-center rounded-full bg-blue-600 text-white text-[10px] font-black uppercase tracking-[0.2em] px-2.5 py-1">OPEN</span>' : ''}
+                            </div>
                             <p class="text-xs text-gray-500">ID: ${school.baseName} <span class="bg-gray-200 px-1 rounded text-[9px] ml-1">${school.variants} Variants</span></p>
                             <p class="text-xs text-slate-700 mt-1">Email: <span class="font-semibold text-slate-900">${email}</span></p>
                         </div>
@@ -269,6 +273,14 @@
             selectedSchool.existingExpiry = null; // Reset
             await loadSubscription(selectedSchool);
             updateUI();
+
+            if (window.matchMedia('(max-width: 1024px)').matches) {
+                const rightPanel = document.getElementById('rightPanel');
+                if (rightPanel) {
+                    rightPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+
             await window.viewDatabaseSummary();
         }
 
