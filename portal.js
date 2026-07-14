@@ -565,7 +565,7 @@
             // Ensure inputs are refreshed
             updateExpectedExpiry();
         }
-
+   
         function updateUI() {
             const el = document.getElementById('selectedSchool');
             const form = document.getElementById('licenseForm');
@@ -693,15 +693,16 @@
             const schoolPanel = document.getElementById('schoolPanel');
             const backBtn = document.getElementById('backToSchoolsBtn');
 
+            if (schoolPanel) {
+                schoolPanel.classList.add('hidden');
+            }
             if (rightPanel) {
                 rightPanel.classList.remove('hidden');
-            }
-            if (schoolPanel) {
-                schoolPanel.classList.remove('lg:col-span-12');
-                schoolPanel.classList.add('lg:col-span-5');
+                rightPanel.classList.remove('lg:col-span-7');
+                rightPanel.classList.add('lg:col-span-12');
             }
             if (backBtn) {
-                backBtn.classList.toggle('hidden', !window.matchMedia('(max-width: 1024px)').matches);
+                backBtn.classList.remove('hidden');
             }
             const inner = document.getElementById('rightPanelInner');
             if (inner) {
@@ -729,8 +730,11 @@
 
             if (rightPanel) {
                 rightPanel.classList.add('hidden');
+                rightPanel.classList.remove('lg:col-span-12');
+                rightPanel.classList.add('lg:col-span-7');
             }
             if (schoolPanel) {
+                schoolPanel.classList.remove('hidden');
                 schoolPanel.classList.remove('lg:col-span-5');
                 schoolPanel.classList.add('lg:col-span-12');
             }
