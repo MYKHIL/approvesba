@@ -131,7 +131,13 @@
         async function verifyMasterPassword() {
             const password = document.getElementById('activationPassword').value;
             if (!password) {
-                showMessage('❌ Activation Master Password is required!', 'error');
+                await window.showConfirm({
+                    title: 'Missing Password',
+                    message: 'Activation Master Password is required before continuing.',
+                    confirmText: 'OK',
+                    hideCancel: true,
+                    variant: 'danger'
+                });
                 return false;
             }
 
@@ -145,13 +151,25 @@
 
                 const result = await response.json();
                 if (!result.success) {
-                    showMessage(`❌ ${result.message || 'Invalid Activation Master Password!'}`, 'error');
+                    await window.showConfirm({
+                        title: 'Invalid Password',
+                        message: result.message || 'Invalid Activation Master Password!',
+                        confirmText: 'OK',
+                        hideCancel: true,
+                        variant: 'danger'
+                    });
                     return false;
                 }
                 return true;
             } catch (error) {
                 console.error('Verification error:', error);
-                showMessage('❌ Verification failed. Please try again.', 'error');
+                await window.showConfirm({
+                    title: 'Verification Failed',
+                    message: 'Verification failed. Please try again.',
+                    confirmText: 'OK',
+                    hideCancel: true,
+                    variant: 'danger'
+                });
                 return false;
             }
         }
